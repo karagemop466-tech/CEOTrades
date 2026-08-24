@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Insider trades by role — CEOTrades</title>
+<meta name="description" content="Insider transactions grouped by the reporting person's role: officers, directors, 10% owners and other insiders.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Crect width='30' height='30' rx='8' fill='%231d4ed8'/%3E%3Cpath d='M6 21 L12 14 L17 18 L24 8' stroke='%23fff' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="roles">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="index.html">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="8" fill="#1d4ed8"/><path d="M6 21 L12 14 L17 18 L24 8" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>CEOTrades<span class="brand-sub">Insider trades dashboard</span></span>
+    </a>
+    <nav class="main-nav" aria-label="Main navigation">
+      <a href="index.html">Dashboard</a>
+      <a href="trades.html">All trades</a>
+      <a href="by-type.html">By type</a>
+      <a href="by-role.html">By role</a>
+      <a href="by-company.html">Companies</a>
+      <a href="by-sector.html">Sectors</a>
+      <a href="filings.html">Filings</a>
+      <a href="methodology.html">Methodology</a>
+    </nav>
+    <span class="fresh-badge"><span class="dot"></span><span id="fresh-text">Source: SEC EDGAR</span></span>
+  </div>
+</header>
+
+<main id="main">
+  <div class="hero">
+    <div class="wrap hero-inner">
+      <div class="kicker">Categories</div>
+      <h1>By insider role</h1>
+      <p class="lede">Who is trading — officers (with title), directors, 10% owners and other reporting persons, exactly as each Form 4 declares the relationship to the issuer.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="wrap">
+      <div id="loading" class="muted">Loading data…</div>
+      <div id="fatal" class="callout warn" style="display:none;margin-bottom:18px">
+        <div class="title">Could not load data</div><p id="fatal-msg"></p>
+      </div>
+
+      <div class="section-head"><h2>Transactions by role</h2>
+        <span class="sub">As declared on each filing (a person can hold several roles)</span></div>
+      <div id="roles-grid" class="role-grid" style="margin-bottom:30px"></div>
+
+      <div class="section-head"><h2>Most active officer titles</h2>
+        <span class="sub">Officer titles reported on filings in this window</span></div>
+      <div id="titles" class="grid-3"></div>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <h4>CEOTrades</h4>
+        <p>Research dashboard for Section 16 insider transactions. Built from public SEC filings.</p>
+      </div>
+      <div>
+        <h4>Roles</h4>
+        <ul>
+          <li>Officer — title reported on Form 4</li>
+          <li>Director — board member</li>
+          <li>10% owner — beneficial owner of 10%+</li>
+          <li>Other — as specified by the filer</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Explore</h4>
+        <ul>
+          <li><a href="trades.html">All trades</a></li>
+          <li><a href="by-company.html">Companies</a></li>
+          <li><a href="methodology.html">Methodology</a></li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:18px">Data is reported as filed with the SEC and may contain errors, amendments or late filings. This site is for research and education only — it is not investment advice.</p>
+  </div>
+</footer>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

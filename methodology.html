@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Methodology &amp; verification — CEOTrades</title>
+<meta name="description" content="How CEOTrades collects insider trade data from SEC EDGAR, and how every record is validated and cross-checked against the original filing.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Crect width='30' height='30' rx='8' fill='%231d4ed8'/%3E%3Cpath d='M6 21 L12 14 L17 18 L24 8' stroke='%23fff' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="methodology">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="index.html">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="8" fill="#1d4ed8"/><path d="M6 21 L12 14 L17 18 L24 8" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>CEOTrades<span class="brand-sub">Insider trades dashboard</span></span>
+    </a>
+    <nav class="main-nav" aria-label="Main navigation">
+      <a href="index.html">Dashboard</a>
+      <a href="trades.html">All trades</a>
+      <a href="by-type.html">By type</a>
+      <a href="by-role.html">By role</a>
+      <a href="by-company.html">Companies</a>
+      <a href="by-sector.html">Sectors</a>
+      <a href="filings.html">Filings</a>
+      <a href="methodology.html">Methodology</a>
+    </nav>
+    <span class="fresh-badge"><span class="dot"></span><span id="fresh-text">Source: SEC EDGAR</span></span>
+  </div>
+</header>
+
+<main id="main">
+  <div class="hero">
+    <div class="wrap hero-inner">
+      <div class="kicker">Transparency</div>
+      <h1>Methodology &amp; verification</h1>
+      <p class="lede">Where the data comes from, what it includes, and every check that runs before it is published. Nothing on this site is estimated — every number traces to a specific SEC filing.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="wrap">
+      <div id="loading" class="muted">Loading data…</div>
+      <div id="fatal" class="callout warn" style="display:none;margin-bottom:18px">
+        <div class="title">Could not load data</div><p id="fatal-msg"></p>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:26px">
+        <div class="card">
+          <h3>What is collected</h3>
+          <ul>
+            <li><b>All Form 4 filings</b> in the data window — every Section 16 report of insider holdings changes for officers, directors and 10% owners of public companies.</li>
+            <li><b>Every transaction line</b>: Table I (equity: common stock, etc.) and Table II (derivatives: options, warrants, convertible securities).</li>
+            <li><b>Filing metadata</b>: issuer, reporting person, relationship, transaction code, dates, shares, per-share price, post-transaction holdings, footnotes, and the Rule 10b5-1(c) flag.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>What is not included</h3>
+          <ul>
+            <li>Form 3 (initial holdings), Form 5 (annual), Form 144 (intent to sell), Schedule 13D/G.</li>
+            <li>Amendments to earlier Form 4s are included as filed — a single security can therefore appear in both the original and the amendment.</li>
+            <li>Holdings-only filings (a Form 4 that reports no transaction) are counted as parsed filings but contribute no transaction rows.</li>
+            <li>If a filing cannot be parsed, it is listed below — never silently dropped.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:26px">
+        <h3>Pipeline</h3>
+        <ol>
+          <li><b>Enumerate.</b> Query SEC's EDGAR full-text search for every Form 4 filed each day of the window (fallback: EDGAR daily index). The index reports the expected total; a mismatch fails the run.</li>
+          <li><b>Download.</b> Fetch each filing's machine-readable <code>ownershipDocument</code> XML from <code>www.sec.gov/Archives/edgar/data/…</code>.</li>
+          <li><b>Parse.</b> Extract issuer, reporting person, relationship, and every transaction with shares, price, code, dates and footnotes.</li>
+          <li><b>Aggregate.</b> Compute daily activity, type/role/company/sector groupings directly from the parsed records.</li>
+          <li><b>Validate.</b> Independent re-computation of every summary number from the raw transaction list (see below).</li>
+          <li><b>Verify.</b> Re-download a random sample of the published records from SEC and confirm each one line by line (see below).</li>
+        </ol>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:26px">
+        <div class="card">
+          <h3>Current run</h3>
+          <p>Window: <b id="m-window">—</b></p>
+          <div id="m-manifest"></div>
+        </div>
+        <div class="card">
+          <h3>Sources</h3>
+          <div id="m-sources"></div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:26px">
+        <div class="card">
+          <h3>Validation (offline checks)</h3>
+          <p class="muted" style="font-size:.85rem">Every record is checked for format, uniqueness, value arithmetic (value = shares × price), and every aggregate is recomputed independently from the transaction list.</p>
+          <ul id="m-validation" style="font-size:.88rem"></ul>
+        </div>
+        <div class="card">
+          <h3>Live verification (SEC cross-check)</h3>
+          <p class="muted" style="font-size:.85rem">A deterministic random sample of records is re-downloaded from SEC EDGAR and re-parsed; issuer CIK, owner CIK, period and the exact transaction row must match what the dashboard publishes.</p>
+          <div id="m-verification"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:26px">
+        <h3>Parse failures</h3>
+        <div id="m-errors"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:26px">
+        <h3>How value and shares are defined</h3>
+        <ul>
+          <li><b>Value</b> is computed as shares × per-share price exactly as the filer reported them (U.S. dollars, per Form 4 Instruction 5). It is <i>not</i> a market valuation and excludes commissions.</li>
+          <li><b>Derivative transactions</b> (options, warrants, units) are shown separately; their "value" is not computed because the derivative security's price is often blank (Instruction 4(c)(iii)).</li>
+          <li><b>Shares</b> are the reported amounts; the site never adjusts for stock splits or reverse splits.</li>
+          <li>Footnotes accompany the affected cells (hover the shares/price cell on the trades page).</li>
+        </ul>
+      </div>
+
+      <div class="callout warn">
+        <div class="title">Caveats</div>
+        <p style="margin-bottom:0">Data is reported as filed and may be corrected by amendments. Prices are per-share prices as reported, which for some transactions (e.g. gifts, grants) may be 0 or blank even though the security has value. Insider trades are public-record disclosures, not predictions — this site is for research and education and is not investment advice.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <h4>CEOTrades</h4>
+        <p>Research dashboard for Section 16 insider transactions. Built from public SEC filings.</p>
+      </div>
+      <div>
+        <h4>Pipeline</h4>
+        <ul>
+          <li><span class="mono">scripts/fetch_insider_trades.py</span></li>
+          <li><span class="mono">scripts/validate_data.py</span></li>
+          <li><span class="mono">scripts/verify_sample.py</span></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Explore</h4>
+        <ul>
+          <li><a href="filings.html">Source filings</a></li>
+          <li><a href="trades.html">All trades</a></li>
+          <li><a href="https://github.com/karagemop466-tech/CEOTrades" target="_blank" rel="noopener noreferrer">GitHub repository</a></li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:18px">Data is reported as filed with the SEC and may contain errors, amendments or late filings. This site is for research and education only — it is not investment advice.</p>
+  </div>
+</footer>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

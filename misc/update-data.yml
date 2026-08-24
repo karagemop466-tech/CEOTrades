@@ -1,0 +1,66 @@
+name: Update insider-trade data
+
+# Collects all Form 4 insider transactions from SEC EDGAR for the last N days,
+# validates them, cross-checks a random sample against SEC, and commits the
+# generated JSON to docs/data. GitHub Pages then publishes them.
+#
+# The workflow is triggered manually, or daily at 03:23 UTC (after the prior
+# day's filings have been accepted by EDGAR).
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Number of calendar days to collect"
+        required: true
+        default: "7"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: insider-data-update
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      SEC_USER_AGENT: "CEOTrades insider-trade dashboard (GitHub Actions; repo karagemop466-tech/CEOTrades)"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build official SEC SIC code map
+        run: python3 scripts/build_sic_map.py
+
+      - name: Collect Form 4 insider trades from SEC EDGAR
+        run: python3 scripts/fetch_insider_trades.py --days "${{ github.event.inputs.days || '7' }}"
+
+      - name: Validate generated data (offline)
+        run: python3 scripts/validate_data.py
+
+      - name: Cross-verify random sample against SEC
+        run: python3 scripts/verify_sample.py --n 20
+
+      - name: Commit data
+        run: |
+          git config user.name "insider-data-bot"
+          git config user.email "insider-data-bot@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "No data changes (identical to previous run)"
+            exit 0
+          fi
+          git commit -m "chore(data): refresh insider trades from SEC EDGAR ($(date -u +%Y-%m-%d))"
+          git push

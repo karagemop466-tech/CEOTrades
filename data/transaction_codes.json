@@ -1,0 +1,88 @@
+{
+  "source": "https://www.sec.gov/files/form4.pdf",
+  "source_section": "Form 4, General Instruction 8 - Transaction Codes",
+  "retrieved": "2026-08-24",
+  "note": "Descriptions transcribed verbatim from the SEC Form 4 instructions.",
+  "codes": {
+    "P": {
+      "group": "General Transaction Codes",
+      "desc": "Open market or private purchase of non-derivative or derivative security"
+    },
+    "S": {
+      "group": "General Transaction Codes",
+      "desc": "Open market or private sale of non-derivative or derivative security"
+    },
+    "V": {
+      "group": "General Transaction Codes",
+      "desc": "Transaction voluntarily reported earlier than required"
+    },
+    "A": {
+      "group": "Rule 16b-3 Transaction Codes",
+      "desc": "Grant, award or other acquisition pursuant to Rule 16b-3(d)"
+    },
+    "D": {
+      "group": "Rule 16b-3 Transaction Codes",
+      "desc": "Disposition to the issuer of issuer equity securities pursuant to Rule 16b-3(e)"
+    },
+    "F": {
+      "group": "Rule 16b-3 Transaction Codes",
+      "desc": "Payment of exercise price or tax liability by delivering or withholding securities incident to the receipt, exercise or vesting of a security issued in accordance with Rule 16b-3"
+    },
+    "I": {
+      "group": "Rule 16b-3 Transaction Codes",
+      "desc": "Discretionary transaction in accordance with Rule 16b-3(f) resulting in acquisition or disposition of issuer securities"
+    },
+    "M": {
+      "group": "Rule 16b-3 Transaction Codes",
+      "desc": "Exercise or conversion of derivative security exempted pursuant to Rule 16b-3"
+    },
+    "C": {
+      "group": "Derivative Securities Codes",
+      "desc": "Conversion of derivative security"
+    },
+    "E": {
+      "group": "Derivative Securities Codes",
+      "desc": "Expiration of short derivative position"
+    },
+    "H": {
+      "group": "Derivative Securities Codes",
+      "desc": "Expiration (or cancellation) of long derivative position with value received"
+    },
+    "O": {
+      "group": "Derivative Securities Codes",
+      "desc": "Exercise of out-of-the-money derivative security"
+    },
+    "X": {
+      "group": "Derivative Securities Codes",
+      "desc": "Exercise of in-the-money or at-the-money derivative security"
+    },
+    "G": {
+      "group": "Other Section 16(b) Exempt Transaction and Small Acquisition Codes",
+      "desc": "Bona fide gift"
+    },
+    "L": {
+      "group": "Other Section 16(b) Exempt Transaction and Small Acquisition Codes",
+      "desc": "Small acquisition under Rule 16a-6"
+    },
+    "W": {
+      "group": "Other Section 16(b) Exempt Transaction and Small Acquisition Codes",
+      "desc": "Acquisition or disposition by will or the laws of descent and distribution"
+    },
+    "Z": {
+      "group": "Other Section 16(b) Exempt Transaction and Small Acquisition Codes",
+      "desc": "Deposit into or withdrawal from voting trust"
+    },
+    "J": {
+      "group": "Other Transaction Codes",
+      "desc": "Other acquisition or disposition (describe transaction)"
+    },
+    "K": {
+      "group": "Other Transaction Codes",
+      "desc": "Transaction in equity swap or instrument with similar characteristics"
+    },
+    "U": {
+      "group": "Other Transaction Codes",
+      "desc": "Disposition pursuant to a tender of shares in a change of control transaction"
+    }
+  }
+}
