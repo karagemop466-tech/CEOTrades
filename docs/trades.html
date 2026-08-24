@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>All insider trades — CEOTrades</title>
+<meta name="description" content="Searchable table of every Form 4 insider transaction in the current data window, with filters by company, role, transaction type and date.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Crect width='30' height='30' rx='8' fill='%231d4ed8'/%3E%3Cpath d='M6 21 L12 14 L17 18 L24 8' stroke='%23fff' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="trades">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="index.html">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="8" fill="#1d4ed8"/><path d="M6 21 L12 14 L17 18 L24 8" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>CEOTrades<span class="brand-sub">Insider trades dashboard</span></span>
+    </a>
+    <nav class="main-nav" aria-label="Main navigation">
+      <a href="index.html">Dashboard</a>
+      <a href="trades.html">All trades</a>
+      <a href="by-type.html">By type</a>
+      <a href="by-role.html">By role</a>
+      <a href="by-company.html">Companies</a>
+      <a href="by-sector.html">Sectors</a>
+      <a href="filings.html">Filings</a>
+      <a href="methodology.html">Methodology</a>
+    </nav>
+    <span class="fresh-badge"><span class="dot"></span><span id="fresh-text">Source: SEC EDGAR</span></span>
+  </div>
+</header>
+
+<main id="main">
+  <div class="hero">
+    <div class="wrap hero-inner">
+      <div class="kicker">Form 4 transactions</div>
+      <h1>All insider trades</h1>
+      <p class="lede">Every transaction line reported in the current window: <span id="type-count">—</span> equity (Table I) and derivative (Table II) transactions, each linked to the original SEC filing.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="wrap">
+      <div id="loading" class="muted">Loading data…</div>
+      <div id="fatal" class="callout warn" style="display:none;margin-bottom:18px">
+        <div class="title">Could not load trade data</div><p id="fatal-msg"></p>
+      </div>
+
+      <div class="filter-bar">
+        <label>Search <input id="f-q" type="search" placeholder="Ticker, company, person, accession…"></label>
+        <label>Code <select id="f-code"></select></label>
+        <label>Role <select id="f-role"></select></label>
+        <label>Kind <select id="f-kind">
+          <option value="">All kinds</option>
+          <option value="non-derivative">Equity (Table I)</option>
+          <option value="derivative">Derivative (Table II)</option>
+        </select></label>
+        <label>Acq/Disp <select id="f-direction">
+          <option value="">All</option>
+          <option value="A">Acquired (A)</option>
+          <option value="D">Disposed (D)</option>
+        </select></label>
+        <label>From <input id="f-from" type="date"></label>
+        <label>To <input id="f-to" type="date"></label>
+        <button id="f-clear" class="btn" type="button">Reset</button>
+        <button id="f-csv" class="btn" type="button" title="Download the current filtered view as CSV">Export CSV</button>
+      </div>
+
+      <p class="result-meta" id="trades-count">Loading…</p>
+      <div id="trades-table"></div>
+      <div id="trades-pager" class="pager"></div>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <h4>CEOTrades</h4>
+        <p>Research dashboard for Section 16 insider transactions. Built from public SEC filings.</p>
+      </div>
+      <div>
+        <h4>Data notes</h4>
+        <ul>
+          <li>Value = shares × per-share price as filed (Table I only)</li>
+          <li>Hover a cell for the filing's footnotes</li>
+          <li>Each row links to the original Form 4</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Explore</h4>
+        <ul>
+          <li><a href="by-type.html">By transaction type</a></li>
+          <li><a href="by-role.html">By insider role</a></li>
+          <li><a href="methodology.html">Methodology</a></li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:18px">Data is reported as filed with the SEC and may contain errors, amendments or late filings. This site is for research and education only — it is not investment advice.</p>
+  </div>
+</footer>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

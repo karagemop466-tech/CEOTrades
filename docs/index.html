@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CEOTrades — Insider Trade Dashboard</title>
+<meta name="description" content="Every Form 4 insider transaction reported to the SEC, organized and analyzed. Data collected directly from SEC EDGAR.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Crect width='30' height='30' rx='8' fill='%231d4ed8'/%3E%3Cpath d='M6 21 L12 14 L17 18 L24 8' stroke='%23fff' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="index">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="index.html">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="8" fill="#1d4ed8"/><path d="M6 21 L12 14 L17 18 L24 8" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>CEOTrades<span class="brand-sub">Insider trades dashboard</span></span>
+    </a>
+    <nav class="main-nav" aria-label="Main navigation">
+      <a href="index.html">Dashboard</a>
+      <a href="trades.html">All trades</a>
+      <a href="by-type.html">By type</a>
+      <a href="by-role.html">By role</a>
+      <a href="by-company.html">Companies</a>
+      <a href="by-sector.html">Sectors</a>
+      <a href="filings.html">Filings</a>
+      <a href="methodology.html">Methodology</a>
+    </nav>
+    <span class="fresh-badge"><span class="dot"></span><span id="fresh-text">Source: SEC EDGAR</span></span>
+  </div>
+</header>
+
+<main id="main">
+  <div class="hero">
+    <div class="wrap hero-inner">
+      <div class="kicker">Section 16 · SEC Form 4 · Public data</div>
+      <h1>Insider trades at publicly traded companies</h1>
+      <p class="lede">Every Form 4 holding change reported to the SEC by directors, officers and 10% owners — collected from EDGAR, organized by company, role and transaction type, and linked back to the original filing.</p>
+      <div class="chips">
+        <span class="chip">Window: <b id="hero-window">—</b></span>
+        <span class="chip">Transactions: <b id="hero-count">—</b></span>
+        <span class="chip">Source: <b>SEC EDGAR</b></span>
+        <span class="chip">Updated: <b>daily</b></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="wrap">
+      <div id="loading" class="muted">Loading data…</div>
+      <div id="fatal" class="callout warn" style="display:none;margin-bottom:18px">
+        <div class="title">Could not load dashboard data</div>
+        <p id="fatal-msg"></p>
+        <p>Serve this folder over HTTP (e.g. <code>python3 -m http.server</code>) so the browser can fetch <code>data/*.json</code>.</p>
+      </div>
+      <div id="stats" class="stat-grid"></div>
+
+      <div class="section-head"><h2>Daily activity</h2>
+        <span class="sub">Transactions and reported value by filing date</span></div>
+      <div class="grid-2" style="margin-bottom:26px">
+        <div class="card"><h3>Filings per day</h3><div id="daily-chart"></div></div>
+        <div class="card"><h3>Most valuable transaction types</h3><div id="type-bars"></div>
+          <p class="card-note">Reported value = shares × per-share price as filed; equity (Table I) transactions only.</p>
+        </div>
+      </div>
+
+      <div class="section-head"><h2>Top companies by reported value</h2>
+        <a class="link-more" href="by-company.html">All companies →</a></div>
+      <div class="card" style="margin-bottom:26px">
+        <div id="company-bars"></div>
+        <p class="card-note" id="company-list-note"></p>
+      </div>
+
+      <div class="section-head"><h2>Most recent transactions</h2>
+        <div style="display:flex;gap:14px">
+          <a class="link-more" href="trades.html">Filter and search all trades →</a>
+          <a class="link-more" href="filings.html">Browse filings →</a>
+        </div>
+      </div>
+      <div id="recent"></div>
+
+      <div class="grid-3" style="margin-top:26px">
+        <a class="card" href="by-type.html" style="text-decoration:none;color:inherit">
+          <h3>By transaction type</h3>
+          <p class="card-note">Purchases, sales, option exercises, grants and every other Form 4 code.</p></a>
+        <a class="card" href="by-role.html" style="text-decoration:none;color:inherit">
+          <h3>By insider role</h3>
+          <p class="card-note">Officers, directors, 10% owners and other reporting persons.</p></a>
+        <a class="card" href="methodology.html" style="text-decoration:none;color:inherit">
+          <h3>Methodology &amp; verification</h3>
+          <p class="card-note">How the data is collected, validated and cross-checked against SEC.</p></a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <h4>CEOTrades</h4>
+        <p>Research dashboard for Section 16 insider transactions. Built from public SEC filings.</p>
+      </div>
+      <div>
+        <h4>Explore</h4>
+        <ul>
+          <li><a href="trades.html">All trades</a></li>
+          <li><a href="by-company.html">Companies</a></li>
+          <li><a href="by-sector.html">Sectors</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Data</h4>
+        <ul>
+          <li><a href="methodology.html">Methodology</a></li>
+          <li><a href="filings.html">Source filings</a></li>
+          <li><a href="https://www.sec.gov/edgar/search/" target="_blank" rel="noopener noreferrer">SEC EDGAR</a></li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:18px">Data is reported as filed with the SEC and may contain errors, amendments or late filings. This site is for research and education only — it is not investment advice.</p>
+  </div>
+</footer>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
