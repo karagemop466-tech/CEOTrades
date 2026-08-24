@@ -124,5 +124,24 @@ test("fmt helpers format numbers and money", () => {
   assert.strictEqual(D.fmtCompact(1.2e6), "$1.20M");
 });
 
+test("companies.json per-company values match trades.json", () => {
+  const companies = load("companies.json");
+  const expected = {};
+  trades.forEach(r => {
+    const cik = r.company.cik;
+    expected[cik] = expected[cik] || { trades: 0, value: 0, filings: new Set() };
+    expected[cik].trades += 1;
+    expected[cik].filings.add(r.accession);
+    if (r.kind === "non-derivative") expected[cik].value += r.value || 0;
+  });
+  companies.forEach(c => {
+    const e = expected[c.cik];
+    assert.ok(e, `company ${c.cik} not in trades`);
+    assert.strictEqual(c.trades, e.trades, `trades mismatch ${c.cik}`);
+    assert.strictEqual(c.filings, e.filings.size, `filings mismatch ${c.cik}`);
+    assert.ok(Math.abs((c.value || 0) - e.value) < 0.01, `value mismatch ${c.cik}`);
+  });
+});
+
 console.log(`\n${passed} browser-side tests passed (${trades.length} records, ${new Set(trades.map(t => t.accession)).size} filings)`);
 process.exit(process.exitCode || 0);

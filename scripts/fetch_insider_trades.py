@@ -495,7 +495,11 @@ def main(argv=None):
         if r["company"]["ticker"]:
             c["ticker"] = r["company"]["ticker"]
     for c in companies.values():
-        c["trades"] = sum(1 for r in records if r["company"]["cik"] == c["cik"])
+        rows = [r for r in records if r["company"]["cik"] == c["cik"]]
+        c["trades"] = len(rows)
+        c["value"] = round(sum(
+            r["value"] or 0.0 for r in rows if r["kind"] == "non-derivative"), 2)
+        c["filings"] = len({r["accession"] for r in rows})
 
     # SIC descriptions (official SEC list, fetched by build_sic_map.py)
     sic_path = os.path.join(args.out, "sic_codes.json")
