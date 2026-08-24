@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Live cross-verification of published data against SEC EDGAR.
 
-Picks a deterministic random sample of trade records from docs/data/trades.json,
+Picks a deterministic random sample of trade records from data/trades.json,
 re-downloads each record's actual filing from SEC, re-parses it, and confirms
 the issuer CIK, owner CIK, accession and the specific transaction fields
 (code / date / shares / price / kind) match what the dashboard publishes.
 
-Writes docs/data/verification.json and exits non-zero if any check fails.
+Writes data/verification.json and exits non-zero if any check fails.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from seclib import (  # noqa: E402
 
 DATA = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "docs", "data",
+    "data",
 )
 
 
@@ -119,7 +119,7 @@ def main(argv=None):
         "method": "re-download each sampled filing from "
                   "https://www.sec.gov/Archives/edgar/data/ and re-parse the "
                   "ownership XML; compare issuer CIK, owner CIK, period and "
-                  "transaction fields against docs/data/trades.json",
+                  "transaction fields against data/trades.json",
         "sample_size": len(results),
         "passed": sum(1 for r in results if r["pass"]),
         "failed": sum(1 for r in results if not r["pass"]),

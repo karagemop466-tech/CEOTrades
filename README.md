@@ -42,14 +42,14 @@ scripts/site_test.js              # Node tests for browser-side aggregations
 ```
 
 The `.github/workflows/update-data.yml` workflow runs the pipeline daily
-(03:23 UTC) or manually, then commits `docs/data/*.json`; GitHub Pages serves
-`docs/`. Source code, scripts and data are all in this repository.
+(03:23 UTC) or manually, then commits `data/*.json`; GitHub Pages serves the repository root.
+Source code, scripts and data are all in this repository.
 
 ## Run locally
 
 ```bash
 # 1) Serve the static site
-cd docs && python3 -m http.server 8000   # open http://localhost:8000
+python3 -m http.server 8000   # open http://localhost:8000
 
 # 2) Refresh the data (needs direct access to SEC endpoints)
 python3 scripts/build_sic_map.py
@@ -66,23 +66,24 @@ node scripts/site_test.js
 * `verify_sample.py` re-downloads a deterministic random sample of filings
   from SEC, re-parses them, and confirms issuer CIK, owner CIK, period and the
   exact transaction row before results are written to `docs/data/verification.json`.
-* Parse failures are written to `docs/data/errors.json` and shown on the
+* Parse failures are written to `data/errors.json` and shown on the
   methodology page — nothing is silently dropped.
 
 ## Project layout
 
+The site lives at the repository root (GitHub Pages is configured for `main /`):
+
 ```
-docs/                     # static site (GitHub Pages root)
-  index.html              # landing dashboard
-  trades.html             # searchable/filterable table of all trades
-  by-type.html            # transaction-code categories
-  by-role.html            # officer / director / 10% owner / other
-  by-company.html         # issuers with insider activity
-  by-sector.html          # SEC SIC industry groups
-  filings.html            # source filings, linked to EDGAR
-  methodology.html        # pipeline, caveats, validation + verification reports
-  assets/                 # dependency-free CSS/JS (system fonts, no CDN)
-  data/                   # generated JSON (committed by the workflow)
-scripts/                  # collection + validation pipeline (Python 3 stdlib)
-.github/workflows/        # daily data refresh
+index.html              # landing dashboard
+trades.html             # searchable/filterable table of all trades
+by-type.html            # transaction-code categories
+by-role.html            # officer / director / 10% owner / other
+by-company.html         # issuers with insider activity
+by-sector.html          # SEC SIC industry groups
+filings.html            # source filings, linked to EDGAR
+methodology.html        # pipeline, caveats, validation + verification reports
+assets/                 # dependency-free CSS/JS (system fonts, no CDN)
+data/                   # generated JSON (committed by the workflow)
+scripts/                # collection + validation pipeline (Python 3 stdlib)
+misc/update-data.yml    # daily refresh workflow (see misc/README.md)
 ```

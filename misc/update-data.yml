@@ -57,7 +57,7 @@ jobs:
         run: |
           git config user.name "insider-data-bot"
           git config user.email "insider-data-bot@users.noreply.github.com"
-          git add docs/data
+          git add data
           if git diff --cached --quiet; then
             echo "No data changes (identical to previous run)"
             exit 0

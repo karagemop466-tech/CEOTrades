@@ -8,10 +8,10 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
-const D = require(path.join(ROOT, "docs", "assets", "data.js"));
+const D = require(path.join(ROOT, "assets", "data.js"));
 
 function load(name) {
-  return JSON.parse(fs.readFileSync(path.join(ROOT, "docs", "data", name), "utf8"));
+  return JSON.parse(fs.readFileSync(path.join(ROOT, "data", name), "utf8"));
 }
 
 const trades = load("trades.json");

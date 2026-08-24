@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline validation of the generated docs/data JSON files.
+"""Offline validation of the generated data JSON files.
 
 Recomputes every aggregate independently from trades.json and compares it
 against summary.json / manifest.json / companies.json. Any mismatch or
@@ -16,7 +16,7 @@ import sys
 
 DATA = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "docs", "data",
+    "data",
 )
 ACCESSION_RE = re.compile(r"^\d{10}-\d{2}-\d{6}$")
 CIK_RE = re.compile(r"^\d{10}$")

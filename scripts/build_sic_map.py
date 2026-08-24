@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build docs/data/sic_codes.json from the official SEC SIC code list.
+"""Build data/sic_codes.json from the official SEC SIC code list.
 
 Source: https://www.sec.gov/search-filings/standard-industrial-classification-sic-code-list
 (the SEC-published table of SIC codes --> industry title).
@@ -22,7 +22,7 @@ from seclib import SIC_LIST_URL, fetch_text  # noqa: E402
 
 OUT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "docs", "data", "sic_codes.json",
+    "data", "sic_codes.json",
 )
 
 
