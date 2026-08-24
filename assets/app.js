@@ -18,10 +18,16 @@
 
   function loadJSON(name) {
     return fetch("data/" + name, { cache: "no-cache" }).then(function (r) {
+      if (r.status === 404) return null; // dataset not collected yet
       if (!r.ok) throw new Error("Could not load data/" + name + " (HTTP " + r.status + ")");
       return r.json();
     });
   }
+
+  var NO_DATA =
+    '<div class="card empty">The dataset has not been collected yet.' +
+    ' It is generated from SEC EDGAR by <span class="mono">scripts/fetch_insider_trades.py</span>' +
+    ' (see <a href="methodology.html">methodology</a>).</div>';
 
   var EXTERNAL = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" ' +
     'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" ' +
@@ -143,7 +149,14 @@
       loadJSON("transaction_codes.json"), loadJSON("sic_codes.json")
     ]).then(function (data) {
       store.summary = data[0]; store.trades = data[1];
-      store.tCodes = data[2].codes || {}; store.sicCodes = data[3] || {};
+      store.tCodes = (data[2] && data[2].codes) || {}; store.sicCodes = data[3] || {};
+      if (!store.summary || !store.trades || !store.trades.length) {
+        el("stats").innerHTML = NO_DATA;
+        ["daily-chart", "type-bars", "company-bars", "recent"].forEach(function (id) {
+          el(id).innerHTML = '<p class="muted">Awaiting the first SEC collection run.</p>';
+        });
+        return;
+      }
       var s = store.summary, m = store.manifest || {};
       el("hero-window").textContent = m.window ?
         D.fmtDate(m.window.start) + " – " + D.fmtDate(m.window.end) : "";
@@ -248,7 +261,13 @@
   function renderTrades() {
     return Promise.all([loadJSON("trades.json"), loadJSON("transaction_codes.json")])
       .then(function (data) {
-        store.trades = data[0]; store.tCodes = data[1].codes || {};
+        store.trades = data[0] || []; store.tCodes = (data[1] && data[1].codes) || {};
+        if (!store.trades.length) {
+          el("type-count").textContent = "0";
+          el("trades-table").innerHTML = NO_DATA;
+          el("trades-count").textContent = "0 transactions";
+          return;
+        }
         el("type-count").textContent = store.trades.length.toLocaleString("en-US");
 
         // build code / role / direction / kind filter options
@@ -341,11 +360,13 @@
   function renderTypes() {
     return Promise.all([loadJSON("summary.json"), loadJSON("transaction_codes.json")])
       .then(function (data) {
-        var s = data[0]; store.tCodes = data[1].codes || {};
+        var s = data[0]; store.tCodes = (data[1] && data[1].codes) || {};
         var byCode = {};
-        s.by_type.forEach(function (t) { byCode[t.code] = t; });
+        if (s && s.by_type) {
+          s.by_type.forEach(function (t) { byCode[t.code] = t; });
+        }
 
-        el("types-grid").innerHTML = s.by_type.map(function (t) {
+        el("types-grid").innerHTML = (s && s.by_type ? s.by_type.map(function (t) {
           var meta = store.tCodes[t.code];
           var group = meta ? meta.group : "Code not listed in Form 4 Instruction 8";
           var desc = meta ? meta.desc : "See the original filing for the explanation of this code.";
@@ -363,7 +384,7 @@
             "<div><b>" + D.fmtNum(t.shares) + "</b>units</div>" +
             "<div><b>" + D.fmtMoney(t.value) + "</b>value</div>" +
             "<div><b>" + D.esc(kinds) + "</b></div></div></div></div>";
-        }).join("") || '<div class="empty">No transactions in this window.</div>';
+        }).join("") : NO_DATA);
 
         el("types-reference").innerHTML = Object.keys(store.tCodes).sort().map(function (c) {
           var m = store.tCodes[c];
@@ -380,6 +401,11 @@
   function renderRoles() {
     return loadJSON("summary.json").then(function (s) {
       store.summary = s;
+      if (!s || !s.records) {
+        el("roles-grid").innerHTML = NO_DATA;
+        el("titles").innerHTML = '<p class="muted">Awaiting data.</p>';
+        return;
+      }
       var total = s.records.total || 1;
       var roleNames = {
         officer: "Officers", director: "Directors", ten_percent_owner: "10% owners",
@@ -455,7 +481,12 @@
   function renderCompanies() {
     return Promise.all([loadJSON("companies.json"), loadJSON("sic_codes.json")])
       .then(function (data) {
-        store.companies = data[0]; store.sicCodes = data[1] || {};
+        store.companies = data[0] || []; store.sicCodes = data[1] || {};
+        if (!store.companies.length) {
+          el("companies-table").innerHTML = NO_DATA;
+          el("companies-count").textContent = "0 companies";
+          return;
+        }
         var q = el("c-q");
         q.addEventListener("input", function () {
           compState.q = q.value; compState.page = 1; renderCompaniesTable();
@@ -468,7 +499,12 @@
   function renderSectors() {
     return Promise.all([loadJSON("summary.json"), loadJSON("sic_codes.json")])
       .then(function (data) {
-        var s = data[0]; var sic = data[1].codes || {};
+        var s = data[0]; var sic = (data[1] && data[1].codes) || {};
+        if (!s || !s.sectors) {
+          el("sectors-body").innerHTML =
+            '<tr><td colspan="6">' + NO_DATA.replace(/^<div class="card empty">/, "") + "</td></tr>";
+          return;
+        }
         var rows = s.sectors.map(function (x) {
           var entry = x.sic !== "unknown" ? sic[String(x.sic)] : null;
           return {
@@ -537,7 +573,12 @@
 
   function renderFilings() {
     return loadJSON("trades.json").then(function (trades) {
-      store.trades = trades;
+      store.trades = trades || [];
+      if (!store.trades.length) {
+        el("filings-count").textContent = "0 filings";
+        el("filings-table").innerHTML = NO_DATA;
+        return;
+      }
       renderFilingsTable();
     });
   }
@@ -548,27 +589,38 @@
       loadJSON("manifest.json"), loadJSON("validation.json"),
       loadJSON("verification.json"), loadJSON("errors.json")
     ]).then(function (data) {
-      var m = data[0], val = data[1], ver = data[2], errs = data[3];
-      el("m-window").textContent = m.window.start + " to " + m.window.end + " (" + m.window.days + " days)";
+      var m = data[0], val = data[1], ver = data[2], errs = data[3] || [];
+      el("m-window").textContent = m ?
+        m.window.start + " to " + m.window.end + " (" + m.window.days + " days)" :
+        "not collected yet";
+      if (!m) {
+        el("m-manifest").innerHTML =
+          '<p class="muted">No collection run yet. The pipeline is triggered by the ' +
+          'workflow in <span class="mono">misc/update-data.yml</span>.</p>';
+      }
       el("m-sources").innerHTML =
         '<div class="table-wrap"><table class="data-table"><thead><tr>' +
         "<th>Input</th><th>Endpoint</th><th>Used for</th></tr></thead><tbody>" +
-        "<tr><td>Filing index</td><td class=\"mono\">" + D.esc(m.endpoint_enumeration) + "</td>" +
+        "<tr><td>Filing index</td><td class=\"mono\">" +
+        D.esc(m ? m.endpoint_enumeration : "https://efts.sec.gov/LATEST/search-index") + "</td>" +
         "<td>Enumerating every Form 4 filed in the window</td></tr>" +
-        "<tr><td>Raw filings</td><td class=\"mono\">" + D.esc(m.endpoint_filings) + "</td>" +
+        "<tr><td>Raw filings</td><td class=\"mono\">" +
+        D.esc(m ? m.endpoint_filings : "https://www.sec.gov/Archives/edgar/data/") + "</td>" +
         "<td>Machine-readable ownership XML of each filing</td></tr>" +
         "<tr><td>SIC titles</td><td class=\"mono\">https://www.sec.gov/search-filings/standard-industrial-classification-sic-code-list</td>" +
         "<td>Industry titles for the sectors page</td></tr>" +
         "<tr><td>Code descriptions</td><td class=\"mono\">https://www.sec.gov/files/form4.pdf</td>" +
         "<td>Transaction-code meanings (Instruction 8)</td></tr></tbody></table></div>";
 
-      el("m-manifest").innerHTML =
-        "<ul><li>Generated: <b>" + D.esc(m.generated_at) + "</b></li>" +
-        "<li>Filings indexed: <b>" + D.fmtNum(m.filings_indexed) + "</b></li>" +
-        "<li>Filings parsed: <b>" + D.fmtNum(m.filings_parsed) + "</b></li>" +
-        "<li>Transactions: <b>" + D.fmtNum(m.transactions) + "</b></li>" +
-        "<li>Companies: <b>" + D.fmtNum(m.companies) + "</b></li>" +
-        "<li>Parse failures: <b>" + D.fmtNum(m.errors) + "</b></li></ul>";
+      if (m) {
+        el("m-manifest").innerHTML =
+          "<ul><li>Generated: <b>" + D.esc(m.generated_at) + "</b></li>" +
+          "<li>Filings indexed: <b>" + D.fmtNum(m.filings_indexed) + "</b></li>" +
+          "<li>Filings parsed: <b>" + D.fmtNum(m.filings_parsed) + "</b></li>" +
+          "<li>Transactions: <b>" + D.fmtNum(m.transactions) + "</b></li>" +
+          "<li>Companies: <b>" + D.fmtNum(m.companies) + "</b></li>" +
+          "<li>Parse failures: <b>" + D.fmtNum(m.errors) + "</b></li></ul>";
+      }
 
       el("m-validation").innerHTML = (val && val.checks ? val.checks : []).map(function (c) {
         return "<li>" + (c[1] ? "✅" : "❌") + " " + D.esc(c[0]) +

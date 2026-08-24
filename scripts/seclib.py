@@ -276,7 +276,13 @@ def _parse_transaction(tx_el, kind: str, footnotes: dict) -> dict:
         ),
         "code": text_of(first_child(coding, "transactionCode")),
         "form_type": text_of(first_child(coding, "transactionFormType")),
-        "timeliness": text_of(first_child(coding, "transactionTimeliness")),
+        # In the live X0609 schema transactionTimeliness is a SIBLING of
+        # transactionCoding (verified against SEC submission
+        # 0000091440-26-000159), so check both locations.
+        "timeliness": text_of(
+            first_child(coding, "transactionTimeliness")
+            or first_child(tx_el, "transactionTimeliness")
+        ),
         "equity_swap": boolish(text_of(first_child(coding, "equitySwapInvolved"))),
         "shares": num(text_of(first_child(amounts, "transactionShares"))),
         "price_per_share": num(text_of(first_child(amounts, "transactionPricePerShare"))),

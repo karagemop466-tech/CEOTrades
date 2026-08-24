@@ -14,6 +14,11 @@ function load(name) {
   return JSON.parse(fs.readFileSync(path.join(ROOT, "data", name), "utf8"));
 }
 
+if (!fs.existsSync(path.join(ROOT, "data", "trades.json"))) {
+  console.log("SKIP  no dataset yet -- run scripts/fetch_insider_trades.py first");
+  process.exit(0);
+}
+
 const trades = load("trades.json");
 const summary = load("summary.json");
 
