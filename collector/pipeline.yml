@@ -1,15 +1,3 @@
-# NOTE: this is the GitHub Actions workflow for this repo, stored here as a
-# regular file because the automation app used in this session lacks the
-# `workflows` repository permission needed to commit under .github/workflows/.
-#
-# To activate the daily automation (one-time, ~30 seconds):
-#   1. Copy this file's content to `.github/workflows/collect.yml`
-#      (GitHub web UI: branch -> + Create new file -> paste -> commit,
-#       or locally:  mkdir -p .github/workflows && cp collector/pipeline.yml .github/workflows/collect.yml)
-#   2. (recommended) merge the open pull request into main so GitHub Pages
-#      (configured on main /) publishes the dashboard, or point Pages at this
-#      branch in the repo Settings.
-# After that the pipeline runs every night at 04:00 UTC with no further input.
 name: Collect insider trades
 
 # Fully automated pipeline:
