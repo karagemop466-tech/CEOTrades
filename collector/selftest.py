@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from collect import (  # noqa: E402
     extract_ownership_xml,
     merge_dataset,
+    parse_efts_hits,
     parse_master_idx,
     parse_ownership,
 )
@@ -397,6 +398,28 @@ def test_merge():
     check("merge: multi-row filing intact", len(merged) == 2, str(merged))
 
 
+def test_efts_hits():
+    blob = json.dumps({
+        "hits": {"total": {"value": 2}, "hits": [
+            {"_id": "0001189770-26-000008:4",
+             "_source": {"adsh": "0001189770-26-000008", "file_date": "2026-08-24",
+                         "form_type": "4", "ciks": ["0001001250"]}},
+            {"_id": "0009999999-26-000001:4/A",
+             "_source": {"adsh": "0009999999-26-000001", "file_date": "20260824",
+                         "form_type": "4/A", "ciks": ["0002000001"]}},
+            {"_id": "skip-me", "_source": {"form_type": "8-K", "adsh": "0000000000-26-000001"}},
+        ]}
+    }).encode()
+    recs = parse_efts_hits(blob)
+    check("efts: two Form 4/5 rows", len(recs) == 2, str(recs))
+    r0 = recs[0]
+    check("efts: path + fd", r0["acc"] == "0001189770-26-000008"
+          and r0["fd"] == "2026-08-24" and r0["form"] == "4" and r0["amend"] == 0
+          and r0["path"] == "edgar/data/1001250/000118977026000008/0001189770-26-000008.txt",
+          str(r0))
+    check("efts: 4/A + compact date", recs[1]["amend"] == 1 and recs[1]["fd"] == "2026-08-24")
+
+
 def test_roundtrip_json():
     p = parse_ownership(make(non_deriv=PURCHASE_TX, deriv=DERIV_EXERCISE_TX))
     blob = json.dumps(p, ensure_ascii=False, separators=(",", ":"))
@@ -417,6 +440,7 @@ if __name__ == "__main__":
     test_master_idx()
     test_submission_extraction()
     test_merge()
+    test_efts_hits()
     test_roundtrip_json()
     print()
     if FAILURES:

@@ -377,17 +377,97 @@ def parse_master_idx(raw: bytes) -> list[dict]:
     return records
 
 
+def parse_efts_hits(raw: bytes) -> list[dict]:
+    """Parse an EFTS search-index JSON page into the same rec shape as master.idx.
+
+    Hit shape (verified against efts.sec.gov/LATEST/search-index):
+      _id typically \"{accession}:{form}\"
+      _source.adsh | file_date | form_type | ciks[]
+    Filing text path: edgar/data/{cik}/{adsh_nodash}/{adsh}.txt
+    """
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    hits = ((doc or {}).get("hits") or {}).get("hits") or []
+    records, seen = [], set()
+    for h in hits:
+        src = h.get("_source") or {}
+        acc = (src.get("adsh") or "").strip()
+        if not acc:
+            hid = str(h.get("_id") or "")
+            acc = hid.split(":")[0].strip()
+        if not ACC_RE.search(acc + ".txt"):
+            continue
+        if acc in seen:
+            continue
+        form = (src.get("form_type") or src.get("file_type") or "").strip()
+        if form not in FORM_TYPES:
+            continue
+        seen.add(acc)
+        root_form, amend = FORM_TYPES[form]
+        filed = (src.get("file_date") or "").strip()
+        if len(filed) == 8 and filed.isdigit():
+            fd = f"{filed[0:4]}-{filed[4:6]}-{filed[6:8]}"
+        else:
+            fd = filed[:10]
+        ciks = src.get("ciks") or []
+        cik = str(ciks[0]).lstrip("0") or "0" if ciks else acc.split("-")[0].lstrip("0")
+        nodash = acc.replace("-", "")
+        path = f"edgar/data/{cik}/{nodash}/{acc}.txt"
+        records.append({"acc": acc, "path": path, "form": root_form,
+                        "amend": amend, "fd": fd})
+    return records
+
+
+def enum_day_efts(day: date) -> tuple[list[dict] | None, str]:
+    """Fallback enumeration via the SEC full-text search API (EFTS)."""
+    ds = day.isoformat()
+    records, seen = [], set()
+    from_ = 0
+    page_size = 100
+    while True:
+        url = (
+            "https://efts.sec.gov/LATEST/search-index"
+            f"?dateRange=custom&startdt={ds}&enddt={ds}"
+            f"&forms=4%2C4%2FA%2C5%2C5%2FA&from={from_}&size={page_size}"
+        )
+        raw = http_get(url)
+        if raw is None:
+            if not records:
+                return None, "EFTS search unavailable"
+            break
+        page = parse_efts_hits(raw)
+        n_new = 0
+        for rec in page:
+            if rec["acc"] in seen:
+                continue
+            seen.add(rec["acc"])
+            records.append(rec)
+            n_new += 1
+        if n_new < page_size:
+            break
+        from_ += page_size
+        if from_ > 5000:
+            break
+    return records, f"EFTS: {len(records)} Form 4/5 filings"
+
+
 def enum_day(day: date) -> tuple[list[dict] | None, str]:
     """List Form 4/5 filings for `day` via the daily master index.
 
     Returns (records, note); records is None when the index file does not
     exist (weekend/holiday/not yet published) and [] only on parse trouble.
+    Falls back to EFTS when the master index cannot be fetched.
     """
     url = (f"{DAILY_INDEX}/{day.year:04d}/QTR{quarter(day)}/"
            f"master.{day.strftime('%Y%m%d')}.idx")
     raw = http_get(url)
     if raw is None:
-        return None, "no index published (weekend/holiday or not yet built)"
+        recs, note = enum_day_efts(day)
+        if recs is None:
+            return None, "no index published (weekend/holiday or not yet built); " + note
+        return recs, "master.idx missing; " + note
     records = parse_master_idx(raw)
     return records, f"master.idx: {len(records)} Form 4/5 filings"
 
