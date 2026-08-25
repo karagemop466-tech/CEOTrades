@@ -1,24 +1,34 @@
 #!/usr/bin/env python3
 """
-CEOTrades collector — pulls ALL insider trades (Form 4 and Form 5) filed on
-U.S. publicly traded companies from SEC EDGAR, with no manual input.
+CEOTrades collector — pulls ALL insider trades (Form 4/4A and Form 5/5A) filed
+on U.S. publicly traded companies from SEC EDGAR, with no manual input.
 
-Data sources (official SEC endpoints only):
-  1. Daily master index (primary enumeration):
-     https://www.sec.gov/Archives/edgar/daily-index/YYYY/MM/DD/master.json
-  2. EDGAR full-text search API (fallback enumeration, also used as cross-check):
-     https://efts.sec.gov/LATEST/search-index?q="4"&forms=4&dateRange=custom&startdt=...&enddt=...&from=N
-  3. Filing documents (XML):
-     https://www.sec.gov/Archives/edgar/data/{CIK}/{ACCESSION_NO_DASHES}/{PRIMARY_DOC}
+Data sources (official SEC endpoints, all verified live):
+
+  1. Daily master index (enumeration) — one file per business day:
+       https://www.sec.gov/Archives/edgar/daily-index/{YYYY}/QTR{q}/master.{YYYYMMDD}.idx
+     Pipe-delimited lines:
+       CIK|Company Name|Form Type|Date Filed|File Name
+     Each filing appears once per associated entity (issuer AND each reporting
+     owner), so rows must be de-duplicated by accession number.
+     The file exists only for business days (404 on weekends/holidays).
+
+  2. Full filing submission (extraction):
+       https://www.sec.gov/Archives/{File Name}   e.g.
+       https://www.sec.gov/Archives/edgar/data/1001250/0001189770-26-000008.txt
+     The submission text contains the structured ownership XML inside an
+     <XML>...</XML> block (root element <ownershipDocument>).
 
 Rules (SEC "Fair Access" policy):
-  - User-Agent header identifying the caller (required, else 403).
-  - Max 10 requests/second; we stay at 8/s via a global throttle.
-  - Indexes update nightly ~10:00 PM ET; ownership forms filed late are
-    disseminated the next business day.
+  - Declared User-Agent identifying the caller (required).
+  - Max 10 requests/second; we throttle to 8/s by default.
+  - Daily indexes are built nightly ~10 PM ET; filings accepted after the
+    cutoff appear the next business day — the 3-day rolling window in the
+    scheduled job re-checks recent days automatically.
 
-The dataset is incremental: each run merges new filings into collector/data/
-trades.json (keyed by accession number), so the history grows over time.
+The dataset is incremental: each run merges new filings into
+collector/data/trades.json (keyed by accession number); amendments (4/A, 5/A)
+supersede the original filing for the same issuer/insider/period.
 
 Standard library only — no third-party dependencies.
 """
@@ -34,30 +44,22 @@ import re
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 UA = "CEOTrades Insider-Trade Collector (github.com/karagemop466-tech/CEOTrades)"
-ARCHIVE = "https://www.sec.gov/Archives"
-DAILY_INDEX = ARCHIVE + "/edgar/daily-index"
-DATA = ARCHIVE + "/edgar/data"
-FTS = "https://efts.sec.gov/LATEST/search-index"
+ARCHIVES = "https://www.sec.gov/Archives"
+DAILY_INDEX = ARCHIVES + "/edgar/daily-index"
 
-# Forms to collect: 4 = statement of changes in beneficial ownership (daily),
-# 5 = annual statement (catches transactions not reported on Form 4).
-FORMS = ("4", "5")
+# Form types to collect (as they appear in the master index).
+FORM_TYPES = {"4": ("4", 0), "4/A": ("4", 1), "5": ("5", 0), "5/A": ("5", 1)}
 
-# Universal FTS text token per form: every Form N XML contains the literal
-# <documentType>N</documentType>, so the token N appears in every filing.
-FTS_TOKEN = {"4": "4", "5": "5"}
-
-# Official Form 4/5 transaction code table (SEC instructions, Item 5).
+# Official Form 4/5 transaction code table (General Instructions, Table I/II).
 CODE_TEXT = {
     "P": "Open market or private purchase of securities",
     "S": "Open market or private sale of securities",
@@ -137,7 +139,6 @@ def http_get(url: str, retries: int = 3, timeout: int = 30):
         req = urllib.request.Request(url, headers={
             "User-Agent": UA,
             "Accept-Encoding": "gzip, deflate",
-            "Host": url.split("/")[2],
         })
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -151,9 +152,9 @@ def http_get(url: str, retries: int = 3, timeout: int = 30):
             last_err = f"HTTP {e.code} for {url}"
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
             last_err = f"{type(e).__name__}: {e} for {url}"
-        # Backoff: 15s, 45s, 120s (SEC may throttle for up to 10 minutes on 429)
+        # Backoff: 5s, 15s, 45s (SEC may temporarily rate-limit).
         if attempt < retries:
-            time.sleep(15 * (3 ** attempt))
+            time.sleep(5 * (3 ** attempt))
     log(f"  ! giving up: {last_err}")
     STATS["errors"].append(last_err)
     return None
@@ -165,10 +166,18 @@ def log(msg: str):
 
 # ---------------------------------------------------------------------------
 # XML parsing (ownership documents: Form 4 / Form 5)
+# Element paths verified against live EDGAR filings (schema X0306..X0609).
 # ---------------------------------------------------------------------------
 
+def _strip_ns(root: ET.Element) -> ET.Element:
+    """Remove XML namespaces in-place (rarely present, but be safe)."""
+    for el in root.iter():
+        if "}" in el.tag:
+            el.tag = el.tag.split("}", 1)[1]
+    return root
+
+
 def _txt(el, path: str) -> str:
-    """Text of el//path, whitespace-stripped, '' if absent."""
     if el is None:
         return ""
     node = el.find(path)
@@ -178,7 +187,6 @@ def _txt(el, path: str) -> str:
 
 
 def _num(el, path: str):
-    """Numeric value at el//path (value element may be nested) or None."""
     s = _txt(el, path)
     if s == "":
         return None
@@ -190,101 +198,66 @@ def _num(el, path: str):
         return None
 
 
+def _flag(el, path: str) -> bool:
+    return _txt(el, path) in ("1", "true")
+
+
 def _rels(rel_el) -> tuple[list[str], str]:
     rels = []
-    if _txt(rel_el, "isDirector") == "1":
+    if _flag(rel_el, "isDirector"):
         rels.append("Director")
-    if _txt(rel_el, "isOfficer") == "1":
+    if _flag(rel_el, "isOfficer"):
         rels.append("Officer")
-    if _txt(rel_el, "isTenPercentOwner") == "1":
+    if _flag(rel_el, "isTenPercentOwner"):
         rels.append("10% Owner")
-    if _txt(rel_el, "isOther") == "1":
+    if _flag(rel_el, "isOther"):
         rels.append("Other")
     title = _txt(rel_el, "officerTitle")
     return rels, title
 
 
-def _parse_non_derivative(tx: ET.Element) -> dict:
+def _norm_name(s: str) -> str:
+    return re.sub(r"\s+", " ", s or "").strip()
+
+
+def _parse_tx(tx: ET.Element, derivative: bool) -> dict:
+    """Parse one nonDerivativeTransaction / derivativeTransaction element.
+
+    Real schema (verified):
+      securityTitle/value, transactionDate/value,
+      transactionCoding/transactionCode, transactionCoding/equitySwapInvolved,
+      transactionAmounts/transactionShares/value,
+      transactionAmounts/transactionPricePerShare/value,
+      transactionAmounts/transactionAcquiredDisposedCode/value,
+      postTransactionAmounts/sharesOwnedFollowingTransaction/value,
+      ownershipNature/directOrIndirectOwnership/value
+    Derivative extras:
+      conversionOrExercisePrice/value, expirationDate/value,
+      underlyingSecurity/underlyingSecurityTitle/value
+    """
     t = {
-        "sec": _txt(tx, "securityTitle/value"),
+        "sec": _norm_name(_txt(tx, "securityTitle/value")),
         "td": _txt(tx, "transactionDate/value"),
         "code": _txt(tx, "transactionCoding/transactionCode"),
-        "swap": _txt(tx, "transactionCoding/equitySwapInvolved") == "1",
-        "sh": _num(tx, "sharesTransactioned/value"),
-        "px": _num(tx, "pricePerShare/value"),
-        "ad": _txt(tx, "acquisitionOrDispositionCode/value"),
-        "af": _num(tx, "sharesOwnedFollowingTransaction/value"),
-        "di": _txt(tx, "directOrIndirectOwnership/value"),
-        "der": 0,
+        "swap": _txt(tx, "transactionCoding/equitySwapInvolved") in ("1", "true"),
+        "sh": _num(tx, "transactionAmounts/transactionShares/value"),
+        "px": _num(tx, "transactionAmounts/transactionPricePerShare/value"),
+        "ad": _txt(tx, "transactionAmounts/transactionAcquiredDisposedCode/value"),
+        "af": _num(tx, "postTransactionAmounts/sharesOwnedFollowingTransaction/value"),
+        "di": _txt(tx, "ownershipNature/directOrIndirectOwnership/value"),
+        "der": 1 if derivative else 0,
         "under": "",
-        "putcall": "",
         "exp": "",
     }
-    t["aod_sh"] = _num(tx, "sharesAcquiredOrDisposed/value")
+    if derivative:
+        t["under"] = _norm_name(_txt(tx, "underlyingSecurity/underlyingSecurityTitle/value"))
+        t["exp"] = _txt(tx, "expirationDate/value")
+        # For M/C exercises the transaction price is usually footnoted; the
+        # conversion/exercise price is reported separately. Keep px as the
+        # actual transaction price; fall back to exercise price only for
+        # valuation when px is absent is intentionally NOT done (no guessing).
+        t["xp"] = _num(tx, "conversionOrExercisePrice/value")
     return t
-
-
-def _parse_derivative(tx: ET.Element) -> dict:
-    t = {
-        "sec": _txt(tx, "securityTitle/value"),
-        "td": _txt(tx, "transactionDate/value"),
-        "code": _txt(tx, "transactionCoding/transactionCode"),
-        "swap": _txt(tx, "transactionCoding/equitySwapInvolved") == "1",
-        "sh": _num(tx, "sharesTransactioned/value"),
-        "px": _num(tx, "conversionOrExercisePrice/value"),
-        "ad": _txt(tx, "acquisitionOrDispositionCode/value"),
-        "af": _num(tx, "sharesOwnedFollowingTransaction/value"),
-        "di": _txt(tx, "directOrIndirectOwnership/value"),
-        "der": 1,
-        "under": _txt(tx, "underlyingSecurity/securityTitle/value"),
-        "putcall": _txt(tx, "putCall/value"),
-        "exp": _txt(tx, "expirationDate/value"),
-    }
-    t["aod_sh"] = _num(tx, "sharesAcquiredOrDisposed/value")
-    return t
-
-
-def parse_ownership(xml_bytes: bytes) -> dict | None:
-    """Parse a Form 4/5 ownership XML document.
-
-    Returns a dict:
-      {schema, docType, period, icik, iname, iticker, pcik, pname,
-       rels: [..], title, trades: [..]}
-    or None if the document is not parseable ownership XML.
-    """
-    try:
-        root = ET.fromstring(xml_bytes)
-    except ET.ParseError:
-        return None
-    if root.tag != "ownershipDocument":
-        return None
-
-    out = {
-        "schema": _txt(root, "schemaVersion"),
-        "docType": _txt(root, "documentType"),
-        "period": _txt(root, "periodOfReporting"),
-        "icik": _txt(root, "issuer/issuerCik"),
-        "iname": _txt(root, "issuer/issuerName"),
-        "iticker": _txt(root, "issuer/issuerTradingSymbol"),
-        "pcik": _txt(root, "reportingOwner/reportingOwnerId/rptOwnerCik"),
-        "pname": _norm_name(_txt(root, "reportingOwner/reportingOwnerId/rptOwnerName")),
-        "rels": [],
-        "title": "",
-        "trades": [],
-    }
-    out["iname"] = _norm_name(out["iname"])
-    rel_el = root.find("reportingOwner/reportingOwnerRelationship")
-    out["rels"], out["title"] = _rels(rel_el)
-
-    for tx in root.iter("nonDerivativeTransaction"):
-        t = _parse_non_derivative(tx)
-        t["val"] = _value(t)
-        out["trades"].append(t)
-    for tx in root.iter("derivativeTransaction"):
-        t = _parse_derivative(tx)
-        t["val"] = _value(t)
-        out["trades"].append(t)
-    return out
 
 
 def _value(t: dict):
@@ -292,206 +265,216 @@ def _value(t: dict):
         return None
     try:
         v = float(t["sh"]) * float(t["px"])
-        if v == int(v):
-            return int(v)
-        return round(v, 2)
+        return int(v) if v == int(v) else round(v, 2)
     except (TypeError, ValueError):
         return None
 
 
-# ---------------------------------------------------------------------------
-# Enumeration: list the Form 4/5 filings for a given date
-# ---------------------------------------------------------------------------
+def parse_ownership(xml_bytes: bytes) -> dict | None:
+    """Parse a Form 4/5 ownership XML document. None if not parseable."""
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return None
+    root = _strip_ns(root)
+    if root.tag != "ownershipDocument":
+        return None
 
-def _norm_name(s: str) -> str:
-    return re.sub(r"\s+", " ", s or "").strip()
+    owners = []
+    for ro in root.findall("reportingOwner"):
+        rels, title = _rels(ro.find("reportingOwnerRelationship"))
+        owners.append({
+            "cik": _txt(ro, "reportingOwnerId/rptOwnerCik").lstrip("0") or "0",
+            "name": _norm_name(_txt(ro, "reportingOwnerId/rptOwnerName")),
+            "rels": rels,
+            "title": _norm_name(title),
+        })
+
+    out = {
+        "schema": _txt(root, "schemaVersion"),
+        "docType": _txt(root, "documentType"),
+        "period": _txt(root, "periodOfReport"),
+        "icik": _txt(root, "issuer/issuerCik").lstrip("0") or "0",
+        "iname": _norm_name(_txt(root, "issuer/issuerName")),
+        "iticker": _txt(root, "issuer/issuerTradingSymbol"),
+        "owners": owners,
+        "trades": [],
+    }
+
+    for tx in root.iter("nonDerivativeTransaction"):
+        t = _parse_tx(tx, derivative=False)
+        t["val"] = _value(t)
+        out["trades"].append(t)
+    for tx in root.iter("derivativeTransaction"):
+        t = _parse_tx(tx, derivative=True)
+        t["val"] = _value(t)
+        out["trades"].append(t)
+    return out
 
 
-def enum_master_json(day: date) -> tuple[list[dict], str]:
-    """Enumerate Form 4/5 filings for `day` via the daily master index.
+def extract_ownership_xml(submission: bytes) -> bytes | None:
+    """Extract the ownership XML block from a full-submission .txt file.
 
-    Returns (records, note). Records: {acc, doc, form, fd}
-    doc = primary document path (may include a subdirectory prefix such as
-    'xslF345X06/form4.xml').
+    Submissions wrap each document in <DOCUMENT>..<TEXT>..<XML>..</XML>.
+    We take the first <XML> block whose content contains <ownershipDocument.
     """
-    url = f"{DAILY_INDEX}/{day.year:04d}/{day.month:02d}/{day.day:02d}/master.json"
+    text = submission.decode("utf-8", "replace")
+    pos = 0
+    while True:
+        start = text.find("<XML>", pos)
+        if start == -1:
+            return None
+        end = text.find("</XML>", start)
+        if end == -1:
+            return None
+        block = text[start + 5:end].strip()
+        if "<ownershipDocument" in block:
+            # Strip anything before the XML declaration / root element.
+            i = block.find("<?xml")
+            if i == -1:
+                i = block.find("<ownershipDocument")
+            return block[i:].encode("utf-8")
+        pos = end + 6
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Enumeration: daily master index
+# ---------------------------------------------------------------------------
+
+ACC_RE = re.compile(r"(\d{10}-\d{2}-\d{6})\.txt$")
+
+
+def quarter(d: date) -> int:
+    return (d.month - 1) // 3 + 1
+
+
+def parse_master_idx(raw: bytes) -> list[dict]:
+    """Parse a master.YYYYMMDD.idx file into Form 4/5 filing records.
+
+    Line format (verified): CIK|Company Name|Form Type|Date Filed|File Name
+    The same accession appears once per associated entity — dedupe by acc.
+    """
+    records, seen = [], set()
+    for line in raw.decode("latin-1").splitlines():
+        parts = line.split("|")
+        if len(parts) != 5:
+            continue
+        cik, _name, form, filed, path = (p.strip() for p in parts)
+        if form not in FORM_TYPES or not path.endswith(".txt"):
+            continue
+        m = ACC_RE.search(path)
+        if not m:
+            continue
+        acc = m.group(1)
+        if acc in seen:
+            continue
+        seen.add(acc)
+        root_form, amend = FORM_TYPES[form]
+        fd = f"{filed[0:4]}-{filed[4:6]}-{filed[6:8]}" if len(filed) == 8 and filed.isdigit() else filed
+        records.append({"acc": acc, "path": path, "form": root_form,
+                        "amend": amend, "fd": fd})
+    return records
+
+
+def enum_day(day: date) -> tuple[list[dict] | None, str]:
+    """List Form 4/5 filings for `day` via the daily master index.
+
+    Returns (records, note); records is None when the index file does not
+    exist (weekend/holiday/not yet published) and [] only on parse trouble.
+    """
+    url = (f"{DAILY_INDEX}/{day.year:04d}/QTR{quarter(day)}/"
+           f"master.{day.strftime('%Y%m%d')}.idx")
     raw = http_get(url)
     if raw is None:
-        return [], f"master.json 404 for {day}"
-    try:
-        entries = json.loads(raw.decode("utf-8", "replace"))
-    except json.JSONDecodeError as e:
-        return [], f"master.json not JSON ({e}); first 200 bytes: {raw[:200]!r}"
-    if not isinstance(entries, list):
-        return [], f"master.json unexpected shape: {str(entries)[:200]}"
-
-    records, seen = [], set()
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        adsh = str(entry.get("adsh") or entry.get("accessionNumber") or "")
-        filings = entry.get("filings")
-        if isinstance(filings, dict):  # tolerate a columnar layout
-            filings = [filings]
-        if not isinstance(filings, list):
-            continue
-        for f in filings:
-            if not isinstance(f, dict):
-                continue
-            form = str(f.get("form") or "")
-            if form not in FORMS:
-                continue
-            doc = str(f.get("primary_doc") or f.get("primaryDocument") or "")
-            fd = str(f.get("filed") or f.get("filedAt") or day.isoformat())
-            if not adsh or not doc or adsh in seen:
-                continue
-            seen.add(adsh)
-            records.append({"acc": adsh, "doc": doc, "form": form, "fd": fd})
-    if not records:
-        note = "master.json fetched but 0 Form 4/5 parsed (schema mismatch?)"
-        STATS["master_sample"] = raw[:600]
-        return [], note
-    return records, f"master.json: {len(records)} filings"
-
-
-def enum_fts(day: date) -> tuple[list[dict], str]:
-    """Enumerate Form 4/5 filings for `day` via the EDGAR full-text search API.
-
-    Verified live: q="<form number>"&forms=<n>&dateRange=custom&startdt=D&enddt=D
-    matches every filing of that form (the number appears in <documentType>).
-    Returns (records, note) where records are {acc, doc, form, fd}.
-    """
-    records, seen = [], set()
-    for form in FORMS:
-        token = urllib.parse.quote(FTS_TOKEN[form])
-        from_ = 0
-        while from_ < 20000:
-            url = (
-                f"{FTS}?q={token}&forms={form}&dateRange=custom"
-                f"&startdt={day.isoformat()}&enddt={day.isoformat()}&from={from_}"
-            )
-            raw = http_get(url)
-            if raw is None:
-                return records, f"FTS page failed for {form} at from={from_}"
-            try:
-                data = json.loads(raw.decode("utf-8", "replace"))
-            except json.JSONDecodeError as e:
-                return records, f"FTS not JSON ({e}); first 200 bytes: {raw[:200]!r}"
-            hits = data.get("hits", {})
-            total = (hits.get("total") or {}).get("value", 0)
-            for hit in hits.get("hits", []):
-                src = hit.get("_source", {})
-                if str(src.get("form", "")).replace("/A", "") not in ("4", "5"):
-                    continue
-                file_type = str(src.get("file_type") or "")
-                if file_type not in ("4", "5", "4/A", "5/A"):
-                    continue
-                hit_id = hit.get("_id", "")
-                if ":" not in hit_id:
-                    continue
-                adsh, fname = hit_id.split(":", 1)
-                if not fname.lower().endswith(".xml") or adsh in seen:
-                    continue
-                xsl = src.get("xsl")
-                doc = f"{xsl}/{fname}" if xsl else fname
-                seen.add(adsh)
-                records.append({
-                    "acc": adsh,
-                    "doc": doc,
-                    "form": "4" if file_type in ("4", "4/A") else "5",
-                    "fd": str(src.get("file_date") or day.isoformat()),
-                })
-            if from_ + 100 >= total:
-                break
-            from_ += 100
-    return records, f"FTS: {len(records)} filings"
-
-
-def enum_day(day: date) -> tuple[list[dict], str]:
-    records, note = enum_master_json(day)
-    if not records:
-        fts_records, fts_note = enum_fts(day)
-        if fts_records:
-            return fts_records, f"fallback: {note} -> {fts_note}"
-        return [], f"{note} -> {fts_note}"
-    return records, note
+        return None, "no index published (weekend/holiday or not yet built)"
+    records = parse_master_idx(raw)
+    return records, f"master.idx: {len(records)} Form 4/5 filings"
 
 
 # ---------------------------------------------------------------------------
-# Document fetching + row production
+# Row production
 # ---------------------------------------------------------------------------
 
-def accession_cik(acc: str) -> str:
-    """CIK used in the archive path = filer CIK = first 10 digits of acc."""
-    return str(int(acc.split("-")[0]))
-
-
-def filing_url(acc: str, doc: str) -> str:
-    return f"{DATA}/{accession_cik(acc)}/{acc.replace('-', '')}/{doc}"
-
-
-def doc_url(acc: str, doc: str) -> str:
-    return filing_url(acc, doc)
-
-
-def rows_from_filing(acc: str, form: str, fd: str, doc: str) -> list[dict]:
-    raw = http_get(doc_url(acc, doc))
+def rows_from_filing(rec: dict) -> list[dict]:
+    url = f"{ARCHIVES}/{rec['path']}"
+    raw = http_get(url)
     if raw is None:
-        STATS["errors"].append(f"document 404: {doc_url(acc, doc)}")
+        STATS["errors"].append(f"submission 404: {url}")
         return []
-    parsed = parse_ownership(raw)
+    xml = extract_ownership_xml(raw)
+    if xml is None:
+        STATS["errors"].append(f"no ownership XML in: {url}")
+        return []
+    parsed = parse_ownership(xml)
     if parsed is None:
-        STATS["errors"].append(f"unparseable: {doc_url(acc, doc)}")
+        STATS["errors"].append(f"unparseable XML: {url}")
         return []
-    rels = "/".join(parsed["rels"]) or "Unknown"
+
+    owners = parsed["owners"] or [{"cik": "", "name": "", "rels": [], "title": ""}]
+    first = owners[0]
+    names = [o["name"] for o in owners if o["name"]]
+    in_name = names[0] if names else ""
+    if len(names) > 1:
+        in_name += f" (+{len(names) - 1} joint)"
+    all_rels = sorted({r for o in owners for r in o["rels"]},
+                      key=["Director", "Officer", "10% Owner", "Other"].index)
+    rels = "/".join(all_rels) or "Unknown"
+    title = next((o["title"] for o in owners if o["title"]), "")
+
     rows = []
     for t in parsed["trades"]:
-        val = t.get("val")
         rows.append({
-            "acc": acc,
-            "form": form,
-            "fd": fd,                 # filing date (EDGAR acceptance)
-            "td": t["td"],            # transaction date
+            "acc": rec["acc"],
+            "form": rec["form"],          # root form: "4" or "5"
+            "amend": rec["amend"],        # 1 when 4/A or 5/A
+            "fd": rec["fd"],              # filing date (from daily index)
+            "td": t["td"],                # transaction date
             "period": parsed["period"],
             "icik": parsed["icik"],
-            "co": _norm_name(parsed["iname"]),
+            "co": parsed["iname"],
             "tk": (parsed["iticker"] or "").strip().upper(),
-            "pcik": parsed["pcik"],
-            "in": _norm_name(parsed["pname"]),
+            "pcik": first["cik"],
+            "in": in_name,
+            "own_n": len(owners),
             "rel": rels,
-            "title": _norm_name(parsed["title"]),
+            "title": title,
             "code": t["code"],
             "ct": CODE_TEXT.get(t["code"], f"Unknown code ({t['code']})"),
             "side": code_side(t["code"]),
-            "sec": _norm_name(t["sec"]),
+            "sec": t["sec"],
             "sh": t["sh"],
             "px": t["px"],
-            "val": val,
+            "val": t["val"],
             "ad": t["ad"],
             "af": t["af"],
             "di": t["di"],
             "der": t["der"],
-            "under": _norm_name(t["under"]),
-            "putcall": t["putcall"],
+            "under": t["under"],
             "exp": t["exp"],
+            "xp": t.get("xp"),          # conversion/exercise price (derivatives)
         })
     return rows
 
 
-def collect_day(day: date) -> list[dict]:
+def collect_day(day: date) -> tuple[list[dict], bool]:
+    """Collect one day. Returns (rows, index_found)."""
     log(f"== {day.isoformat()}")
     records, note = enum_day(day)
-    STATS["days"][day.isoformat()] = {"note": note, "filings": len(records), "trades": 0}
     log(f"   enumeration: {note}")
+    if records is None:
+        STATS["days"][day.isoformat()] = {"note": note, "filings": 0, "trades": 0,
+                                          "index": False}
+        return [], False
     rows = []
     for i, rec in enumerate(records, 1):
-        if i % 100 == 0:
-            log(f"   ... {i}/{len(records)} filings")
-        got = rows_from_filing(rec["acc"], rec["form"], rec["fd"], rec["doc"])
-        rows.extend(got)
-    STATS["days"][day.isoformat()]["trades"] = len(rows)
-    log(f"   -> {len(rows)} trades")
-    return rows
+        if i % 200 == 0:
+            log(f"   ... {i}/{len(records)} filings, {len(rows)} trades so far")
+        rows.extend(rows_from_filing(rec))
+    STATS["days"][day.isoformat()] = {"note": note, "filings": len(records),
+                                      "trades": len(rows), "index": True}
+    log(f"   -> {len(records)} filings, {len(rows)} trades")
+    return rows, True
 
 
 # ---------------------------------------------------------------------------
@@ -502,36 +485,38 @@ def merge_dataset(existing: list[dict], new_rows: list[dict]) -> list[dict]:
     """Merge new rows into the dataset.
 
     Key: accession number (one filing may contribute several trade rows).
-    Amendment rule: a 4/A (or later) filing supersedes an earlier filing for
-    the same (issuer, insider, periodOfReporting) — keep the most recently
-    filed set.
+    Amendment rule: for the same (issuer, insider, periodOfReport) the most
+    recently filed document wins; amendments outrank originals on ties.
     """
-    by_acc = {}
+    by_acc: dict[str, list[dict]] = {}
     for r in existing:
         by_acc.setdefault(r["acc"], []).append(r)
     for r in new_rows:
-        by_acc[r["acc"]] = [r]
+        # a re-collected filing fully replaces its previous rows
+        if r["acc"] in by_acc and by_acc[r["acc"]] and \
+                by_acc[r["acc"]][0].get("_new") is not True:
+            by_acc[r["acc"]] = []
+        r["_new"] = True
+        by_acc.setdefault(r["acc"], []).append(r)
 
-    # Group filings by (issuer, insider, period) to resolve amendments.
     groups: dict[tuple, list] = {}
     for acc, rs in by_acc.items():
-        key = (rs[0]["icik"], rs[0]["pcik"], rs[0].get("period", ""))
-        groups.setdefault(key, []).append((rs[0]["fd"], acc, rs))
-    keep_accs = set()
-    for key, lst in groups.items():
-        if len(lst) == 1:
-            keep_accs.add(lst[0][1])
+        if not rs:
             continue
-        # Multiple filings for same issuer+insider+period:
-        # keep the one with the latest filing date (amendment wins).
-        lst.sort(key=lambda x: x[0], reverse=True)
-        keep_accs.add(lst[0][1])
+        r0 = rs[0]
+        key = (r0["icik"], r0["pcik"], r0.get("period", ""))
+        groups.setdefault(key, []).append(
+            (r0["fd"], r0.get("amend", 0), acc, rs))
 
     merged = []
-    for acc, rs in by_acc.items():
-        if acc in keep_accs:
-            merged.extend(rs)
-    merged.sort(key=lambda r: (r["fd"], r["td"], r["co"], r["in"]), reverse=True)
+    for lst in groups.values():
+        lst.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
+        merged.extend(lst[0][3])
+
+    for r in merged:
+        r.pop("_new", None)
+    merged.sort(key=lambda r: (r["fd"], r["td"] or "", r["co"], r["in"]),
+                reverse=True)
     return merged
 
 
@@ -553,36 +538,38 @@ def main():
     args = ap.parse_args()
 
     global THROTTLE
-    THROTTLE = Throttle(args.rate)
+    THROTTLE = Throttle(min(args.rate, 10.0))
 
     os.makedirs(args.data_dir, exist_ok=True)
-    dataset_path = os.path.join(args.data_dir, "trades.json")
+    dataset_path = os.path.join(args.data_dir, "trades.json.gz")
+    legacy_path = os.path.join(args.data_dir, "trades.json")
     stats_path = os.path.join(args.data_dir, "stats.json")
 
     dataset: list[dict] = []
-    if os.path.exists(dataset_path):
-        try:
-            with open(dataset_path, "r", encoding="utf-8") as f:
-                dataset = json.load(f)
-            log(f"Loaded existing dataset: {len(dataset)} trades")
-        except (json.JSONDecodeError, OSError) as e:
-            log(f"! could not load existing dataset ({e}); starting fresh")
-            dataset = []
+    for path, opener in ((dataset_path, lambda p: gzip.open(p, "rt", encoding="utf-8")),
+                         (legacy_path, lambda p: open(p, "r", encoding="utf-8"))):
+        if os.path.exists(path):
+            try:
+                with opener(path) as f:
+                    dataset = json.load(f)
+                log(f"Loaded existing dataset: {len(dataset)} trades ({path})")
+                break
+            except (json.JSONDecodeError, OSError) as e:
+                log(f"! could not load dataset {path} ({e})")
 
-    stats = {
-        "runs": [],
-        "last_updated": None,
-    }
+    stats = {"runs": [], "last_updated": None}
     if os.path.exists(stats_path):
         try:
             with open(stats_path, "r", encoding="utf-8") as f:
                 stats = json.load(f)
         except (json.JSONDecodeError, OSError):
             pass
-    done_days = set(stats.get("days_collected", {}).keys())
+    done_days = {d for d, info in stats.get("days_collected", {}).items()
+                 if info.get("index")}
 
+    today_utc = datetime.now(timezone.utc).date()
     end = datetime.strptime(args.end, "%Y-%m-%d").date() if args.end \
-        else date.today() - timedelta(days=1)
+        else today_utc - timedelta(days=1)
     if args.start:
         start = datetime.strptime(args.start, "%Y-%m-%d").date()
     else:
@@ -595,43 +582,44 @@ def main():
         if day.isoformat() in done_days and not args.force:
             log(f"-- {day.isoformat()} already collected, skipping")
         else:
-            new_rows.extend(collect_day(day))
+            rows, _found = collect_day(day)
+            new_rows.extend(rows)
         day += timedelta(days=1)
 
     merged = merge_dataset(dataset, new_rows)
 
-    # Amendment de-dup may drop previously stored rows; stats reflect the run.
     run_info = {
         "window": [start.isoformat(), end.isoformat()],
         "new_filings_trades": len(new_rows),
         "dataset_size_after": len(merged),
         "requests": STATS["requests"],
         "errors": STATS["errors"][-50:],
+        "error_count": len(STATS["errors"]),
         "days": STATS["days"],
-        "master_sample": STATS.get("master_sample"),
-        "at": datetime.utcnow().isoformat() + "Z",
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     stats.setdefault("runs", []).append(run_info)
     stats["runs"] = stats["runs"][-60:]
     stats["last_updated"] = run_info["at"]
     stats.setdefault("days_collected", {})
     for d, info in STATS["days"].items():
-        stats["days_collected"][d] = info
+        # Mark a day done only when its index existed and was processed;
+        # 404 days (weekend/holiday/not-yet-published) stay retryable.
+        if info.get("index"):
+            stats["days_collected"][d] = info
 
-    with open(dataset_path, "w", encoding="utf-8") as f:
+    with gzip.open(dataset_path, "wt", encoding="utf-8", compresslevel=9) as f:
         json.dump(merged, f, ensure_ascii=False, separators=(",", ":"))
+    if os.path.exists(legacy_path):
+        os.remove(legacy_path)  # superseded by the gzipped dataset
     with open(stats_path, "w", encoding="utf-8") as f:
         json.dump(stats, f, ensure_ascii=False, indent=1)
 
     log(f"Dataset: {len(merged)} trades -> {dataset_path}")
-    if new_rows:
-        log(f"Run added {len(new_rows)} trades from the window.")
-    else:
-        log("Run added 0 trades.")
-    # Fail loudly if the whole window produced nothing and there were errors,
-    # or produced nothing with no errors at all (likely a systemic problem).
-    if not new_rows and not merged:
-        log("FATAL: empty dataset and 0 new trades — check SEC access.")
+    log(f"Run added {len(new_rows)} trade rows; "
+        f"{STATS['requests']} HTTP requests; {len(STATS['errors'])} errors.")
+    if not merged:
+        log("FATAL: dataset is empty — check SEC access.")
         sys.exit(2)
 
 

@@ -18,11 +18,12 @@ Standard library only.
 from __future__ import annotations
 
 import csv
+import gzip
 import json
 import os
 import sys
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -78,7 +79,7 @@ def edgar_url(acc: str) -> str:
 # ---------------------------------------------------------------------------
 
 def aggregate(rows: list[dict]) -> dict:
-    today = datetime.utcnow()
+    today = datetime.now(timezone.utc)
     today_s = today.strftime("%Y-%m-%d")
 
     n_filings = len({r["acc"] for r in rows})
@@ -253,13 +254,15 @@ def aggregate(rows: list[dict]) -> dict:
 
 CSV_COLS = [
     ("filing_date", "fd"), ("transaction_date", "td"), ("form", "form"),
-    ("accession", "acc"), ("company", "co"), ("ticker", "tk"),
-    ("insider", "in"), ("relationship", "rel"), ("title", "title"),
+    ("amended", "amend"), ("accession", "acc"), ("company", "co"),
+    ("ticker", "tk"), ("issuer_cik", "icik"),
+    ("insider", "in"), ("insider_cik", "pcik"),
+    ("relationship", "rel"), ("title", "title"),
     ("code", "code"), ("code_text", "ct"), ("side", "side"),
     ("security", "sec"), ("shares", "sh"), ("price", "px"), ("value", "val"),
     ("acquired_disposed", "ad"), ("shares_after", "af"),
     ("direct_indirect", "di"), ("derivative", "der"), ("underlying", "under"),
-    ("put_call", "putcall"), ("expiration", "exp"), ("edgar_url", None),
+    ("exercise_price", "xp"), ("expiration", "exp"), ("edgar_url", None),
 ]
 
 
@@ -294,7 +297,7 @@ def write_data_outputs(rows: list[dict], summary: dict, stats: dict | None):
         if fn.endswith(".json"):
             os.remove(os.path.join(mdir, fn))
 
-    cutoff = (datetime.utcnow() - timedelta(days=RECENT_DAYS)).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=RECENT_DAYS)).strftime("%Y-%m-%d")
     recent = [r for r in rows if r.get("fd", "") >= cutoff]
     with open(os.path.join(SITE_DATA, "recent.json"), "w", encoding="utf-8") as f:
         json.dump(recent, f, ensure_ascii=False, separators=(",", ":"))
@@ -511,13 +514,14 @@ function fmtNum(n) {
 }
 function fmtMoney(n, signed) {
   if (n === null || n === undefined || isNaN(n)) return "—";
-  const a = Math.abs(n);
+  const neg = n < 0, a = Math.abs(n);
   let s;
-  if (a >= 1e9) s = "$" + (n / 1e9).toFixed(2) + "B";
-  else if (a >= 1e6) s = "$" + (n / 1e6).toFixed(1) + "M";
-  else if (a >= 1e3) s = "$" + (n / 1e3).toFixed(0) + "K";
-  else s = "$" + n.toFixed(0);
-  if (signed) { if (n > 0) s = "+" + s; }
+  if (a >= 1e9) s = "$" + (a / 1e9).toFixed(2) + "B";
+  else if (a >= 1e6) s = "$" + (a / 1e6).toFixed(1) + "M";
+  else if (a >= 1e3) s = "$" + (a / 1e3).toFixed(0) + "K";
+  else s = "$" + a.toFixed(0);
+  if (neg) s = "−" + s;
+  else if (signed && n > 0) s = "+" + s;
   return s;
 }
 function fmtDate(d) {
@@ -645,20 +649,17 @@ async function initIndex() {
   const [sum, recent] = await Promise.all([loadJSON("data/summary.json"), loadJSON("data/recent.json")]);
   $(".hero .range").textContent =
     `Coverage ${sum.range.from} → ${sum.range.to} · ${sum.counts.trades.toLocaleString()} trades · auto-updated`;
+  const count = n => n.toLocaleString("en-US");
   const cards = [
-    ["Insider trades", sum.counts.trades, "across " + sum.counts.filings.toLocaleString() + " filings"],
-    ["Companies", sum.counts.companies, "with filed trades"],
-    ["Insiders", sum.counts.insiders, "directors, officers, 10%+ owners"],
-    ["Open-market buys", sum.value.buy, "code P, " + sum.counts.priced_purchases.toLocaleString() + " trades", "buy"],
-    ["Open-market sells", sum.value.sell, "code S, " + sum.counts.priced_sales.toLocaleString() + " trades", "sell"],
-    ["Net insider flow", sum.value.net, "buys − sells (P − S)", sum.value.net >= 0 ? "buy" : "sell"],
+    ["Insider trades", count(sum.counts.trades), "across " + count(sum.counts.filings) + " filings", ""],
+    ["Companies", count(sum.counts.companies), "with filed trades", ""],
+    ["Insiders", count(sum.counts.insiders), "directors, officers, 10%+ owners", ""],
+    ["Open-market buys", fmtMoney(sum.value.buy), "code P · " + count(sum.counts.priced_purchases) + " trades", "buy"],
+    ["Open-market sells", fmtMoney(sum.value.sell), "code S · " + count(sum.counts.priced_sales) + " trades", "sell"],
+    ["Net insider flow", fmtMoney(sum.value.net, true), "buys − sells (P − S)", sum.value.net >= 0 ? "buy" : "sell"],
   ];
   $("#stats").innerHTML = cards.map(c =>
-    `<div class="card stat"><div class="lbl">${c[0]}</div><div class="val ${c[4] || ""}">${
-      typeof c[1] === "number" && (c[1] >= 1e6 || c[1] <= -1e6 || String(c[0]).toLowerCase().includes("$") || /buys|sells|flow/.test(c[0]))
-        ? (String(c[0]).toLowerCase().includes("trades") || /Companies|Insiders/.test(c[0])) ? c[1].toLocaleString() : fmtMoney(c[1], true)
-        : c[1].toLocaleString()
-    }</div><div class="sub">${c[2]}</div></div>`).join("");
+    `<div class="card stat"><div class="lbl">${c[0]}</div><div class="val ${c[3]}">${c[1]}</div><div class="sub">${c[2]}</div></div>`).join("");
 
   const latest = recent.slice(0, 15);
   $("#latest").innerHTML = `<div class="table-scroll"><table><thead><tr>
@@ -783,15 +784,14 @@ async function initCompanies() {
     { key: "last", label: "Last filed", cls: "num" },
   ], sum.companies, { per: 50, sortKey: "trades", row: (r) => `<tr>
     <td><span class="ticker">${r.tk ? esc(r.tk) : "—"}</span></td>
-    <td>${esc(r.co)}</td>
+    <td><a href="trades.html?tk=${encodeURIComponent(r.tk || r.co)}" title="View this company's trades">${esc(r.co)}</a></td>
     <td class="num">${fmtNum(r.trades)}</td>
     <td class="num">${fmtNum(r.insiders)}</td>
     <td class="num">${r.buy ? fmtMoney(r.buy) : "—"}</td>
     <td class="num">${r.sell ? fmtMoney(r.sell) : "—"}</td>
     <td class="num ${r.net > 0 ? "pos" : r.net < 0 ? "neg" : ""}">${fmtMoney(r.net, true)}</td>
     <td class="num">${fmtDate(r.last)}</td>
-  </tr>
-  <tr><td colspan="8" style="padding-top:0"><a class="sub" href="trades.html?tk=${encodeURIComponent(r.tk || r.co)}">view trades →</a></td></tr>` });
+  </tr>` });
   $("#coSearch").addEventListener("input", () => {
     const q = $("#coSearch").value.trim().toLowerCase();
     api.setFilter((r) => !q || (r.co || "").toLowerCase().includes(q) || (r.tk || "").toLowerCase().includes(q));
@@ -1102,13 +1102,18 @@ ABOUT_BODY = """
 
 
 def build():
+    dataset_gz = os.path.join(DATA_IN, "trades.json.gz")
     dataset_path = os.path.join(DATA_IN, "trades.json")
     stats_path = os.path.join(DATA_IN, "stats.json")
-    if not os.path.exists(dataset_path):
-        print(f"ERROR: no dataset at {dataset_path} — run collector/collect.py first.", file=sys.stderr)
+    if os.path.exists(dataset_gz):
+        with gzip.open(dataset_gz, "rt", encoding="utf-8") as f:
+            rows = json.load(f)
+    elif os.path.exists(dataset_path):
+        with open(dataset_path, "r", encoding="utf-8") as f:
+            rows = json.load(f)
+    else:
+        print(f"ERROR: no dataset at {dataset_gz} — run collector/collect.py first.", file=sys.stderr)
         sys.exit(1)
-    with open(dataset_path, "r", encoding="utf-8") as f:
-        rows = json.load(f)
     stats = None
     if os.path.exists(stats_path):
         with open(stats_path, "r", encoding="utf-8") as f:
