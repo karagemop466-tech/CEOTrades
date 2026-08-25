@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Book · CEOTrades</title>
+<meta name="description" content="Every simulated $10,000 fill following insider Form 4 purchases, with real entry prices, gap vs the insider, and live ROI.">
+<link rel="stylesheet" href="css/site.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+</head>
+<body data-page="paper">
+<header class="top">
+  <div class="wrap nav">
+    <a class="brand" href="index.html"><span class="brand-ico">📈</span>CEO<span>Trades</span></a>
+    <nav>
+    <a href="index.html" data-nav="index">Dashboard</a>
+    <a href="paper.html" data-nav="paper">Paper book</a>
+    <a href="trades.html" data-nav="trades">Trades</a>
+    <a href="companies.html" data-nav="companies">Companies</a>
+    <a href="insiders.html" data-nav="insiders">Insiders</a>
+    <a href="analysis.html" data-nav="analysis">Findings</a>
+    <a href="about.html" data-nav="about">About</a>
+</nav>
+  </div>
+</header>
+<main class="wrap">
+
+<section class="hero paper">
+  <h1>Paper book</h1>
+  <p>Every simulated fill: $10,000 notional, next regular-session open after the Form&nbsp;4 filing date,
+  marked to the latest verified close. Insider price, shares and dollar amount are kept next to our fill
+  so the delay gap is visible. Positions are not closed — this is a forward test, not a round-trip backtest.</p>
+  <span class="range">Fixed $10,000 · no commissions modelled · no lookahead</span>
+</section>
+
+<div class="grid g6" id="paperstats"></div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Equity curve <small>· deployed vs mark-to-market</small></h3><div id="papereq"></div></div>
+  <div class="card"><h3>The rule</h3><div id="paperrule" class="doc"></div></div>
+</div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Findings</h3><div id="paperfindings"></div></div>
+  <div class="card"><h3>Return by horizon</h3><div id="horizons" class="table-scroll"></div></div>
+</div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Mean ROI by insider role</h3><div id="byrole"></div></div>
+  <div class="card"><h3>Mean ROI by insider purchase size</h3><div id="bysize"></div></div>
+</div>
+
+<div class="toolbar" style="margin-top:18px">
+  <input type="search" id="pq" placeholder="Search ticker, company, insider…">
+  <select id="pstatus">
+    <option value="">All statuses</option>
+    <option value="open">Open</option>
+    <option value="awaiting_entry">Awaiting next open</option>
+    <option value="no_price">No verified price</option>
+  </select>
+  <span class="spacer"></span>
+  <a class="btn ghost" href="data/paper/positions.csv" download>⬇ Download CSV</a>
+</div>
+<div id="paperTable"></div>
+
+</main>
+<footer class="wrap foot">
+  <div class="foot-in">
+    <div><strong>CEOTrades</strong> — insider paper trading. $10k per open-market buy, next session’s open.</div>
+    <div class="foot-src">
+      Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
+      Form 4 / Form 5 filings · collected automatically by GitHub Actions ·
+      <span data-slot="last-updated">loading…</span>
+    </div>
+    <div class="foot-disc">Data is public SEC filing data. Not investment advice.</div>
+  </div>
+</footer>
+<script src="js/app.js"></script>
+</body>
+</html>

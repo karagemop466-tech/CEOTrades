@@ -333,10 +333,11 @@ def write_data_outputs(rows: list[dict], summary: dict, stats: dict | None):
 
 NAV = """
     <a href="index.html" data-nav="index">Dashboard</a>
+    <a href="paper.html" data-nav="paper">Paper book</a>
     <a href="trades.html" data-nav="trades">Trades</a>
     <a href="companies.html" data-nav="companies">Companies</a>
     <a href="insiders.html" data-nav="insiders">Insiders</a>
-    <a href="analysis.html" data-nav="analysis">Analysis</a>
+    <a href="analysis.html" data-nav="analysis">Findings</a>
     <a href="about.html" data-nav="about">About</a>
 """
 
@@ -364,7 +365,7 @@ def page(title: str, active: str, body: str, desc: str = "") -> str:
 </main>
 <footer class="wrap foot">
   <div class="foot-in">
-    <div><strong>CEOTrades</strong> — insider trade intelligence.</div>
+    <div><strong>CEOTrades</strong> — insider paper trading. $10k per open-market buy, next session’s open.</div>
     <div class="foot-src">
       Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
       Form 4 / Form 5 filings · collected automatically by GitHub Actions ·
@@ -395,7 +396,7 @@ a{color:var(--acc);text-decoration:none}
 a:hover{text-decoration:underline}
 .wrap{max-width:1180px;margin:0 auto;padding:0 20px}
 .top{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
-.nav{display:flex;align-items:center;justify-content:space-between;height:60px;gap:16px}
+.nav{display:flex;align-items:center;justify-content:space-between;min-height:60px;padding:8px 0;gap:16px;flex-wrap:wrap}
 .brand{font-size:19px;font-weight:800;color:var(--ink);letter-spacing:-.02em;white-space:nowrap}
 .brand span{color:var(--acc)}
 .brand-ico{margin-right:2px}
@@ -505,6 +506,20 @@ ul.clean li{margin:6px 0}
   border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media print{.top,.toolbar,.pager,.foot{display:none}}
+.pill.pending{background:#fff7ed;color:#c2410c}
+.pill.dead{background:#eef1f5;color:#64748b}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:0 0 22px}
+.step{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow)}
+.step .n{width:28px;height:28px;border-radius:8px;background:var(--acc);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;margin-bottom:8px}
+.step h3{margin:0 0 6px;font-size:15px}
+.step p{margin:0;color:var(--muted);font-size:13.5px}
+@media(max-width:800px){.steps{grid-template-columns:1fr}}
+.hero.paper{background:linear-gradient(135deg,#0b3d2e 0%,#12334d 50%,#1d3a6b 100%)}
+.findings{margin:0;padding:0;list-style:none}
+.findings li{padding:10px 0;border-bottom:1px solid #f0f3f7}
+.findings li:last-child{border-bottom:none}
+.findings b{display:block;margin-bottom:2px}
+code{font-size:12.5px;background:#eef1f6;padding:1px 6px;border-radius:5px}
 """
 
 JS = r"""
@@ -516,6 +531,9 @@ async function loadJSON(url) {
   const r = await fetch(url, { cache: "no-cache" });
   if (!r.ok) throw new Error(url + " -> " + r.status);
   return r.json();
+}
+async function loadJSONOpt(url) {
+  try { return await loadJSON(url); } catch (e) { return null; }
 }
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
@@ -540,6 +558,25 @@ function fmtMoney(n, signed) {
 function fmtDate(d) {
   if (!d) return "—";
   return d; // ISO already
+}
+function fmtPct(n) {
+  if (n === null || n === undefined || n === "" || isNaN(n)) return "—";
+  const s = (Number(n) * 100).toFixed(2) + "%";
+  return Number(n) > 0 ? "+" + s : s;
+}
+function fmtPx(n) {
+  if (n === null || n === undefined || n === "" || isNaN(n)) return "—";
+  return "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+}
+function statusPill(st) {
+  if (st === "open") return '<span class="pill buy">open</span>';
+  if (st === "awaiting_entry") return '<span class="pill pending">awaiting open</span>';
+  return '<span class="pill dead">no price</span>';
+}
+function pctCell(n) {
+  if (n === null || n === undefined || isNaN(n)) return '<td class="num">—</td>';
+  const cls = n > 0 ? "pos" : n < 0 ? "neg" : "";
+  return `<td class="num ${cls}">${fmtPct(n)}</td>`;
 }
 function sideClass(code) {
   if (code === "P") return "buy";
@@ -658,6 +695,92 @@ function setLastUpdated() {
   }).catch(() => {});
 }
 
+function edgarLink(acc) {
+  if (!acc) return "";
+  const cik = parseInt(String(acc).slice(0, 10), 10);
+  const href = `https://www.sec.gov/Archives/edgar/data/${cik}/${String(acc).replace(/-/g, "")}-index.htm`;
+  return `<a href="${href}" target="_blank" rel="noopener" title="View filing on SEC EDGAR">↗</a>`;
+}
+function renderPaperKpis(sel, psum) {
+  const el = $(sel); if (!el) return;
+  if (!psum || !psum.counts) {
+    el.innerHTML = '<div class="card empty" style="grid-column:1/-1">Paper book will fill after the first collection of open-market buys (code P).</div>';
+    return;
+  }
+  const cap = psum.capital || {}, roi = psum.roi || {}, c = psum.counts;
+  const cards = [
+    ["Signals", (c.signals || 0).toLocaleString(), "insider open-market buys", ""],
+    ["Open positions", (c.open || 0).toLocaleString(), (c.awaiting_entry || 0) + " awaiting next open", ""],
+    ["Capital deployed", fmtMoney(cap.deployed), "$10,000 × open positions", ""],
+    ["Mark-to-market", fmtMoney(cap.value), "latest regular-session close", ""],
+    ["Paper P&L", fmtMoney(cap.pnl, true), "ROI " + fmtPct(cap.roi), cap.pnl >= 0 ? "buy" : "sell"],
+    ["Win rate", roi.n ? ((roi.win_rate || 0) * 100).toFixed(1) + "%" : "—", "positions with ROI > 0 · n=" + (roi.n || 0), roi.win_rate >= 0.5 ? "buy" : ""],
+  ];
+  el.innerHTML = cards.map(x =>
+    `<div class="card stat"><div class="lbl">${x[0]}</div><div class="val ${x[3]}">${x[1]}</div><div class="sub">${x[2]}</div></div>`).join("");
+}
+function renderEquity(sel, eq) {
+  const el = $(sel); if (!el) return;
+  if (!eq || !eq.length) { el.innerHTML = '<div class="empty">Equity curve appears after the first fills.</div>'; return; }
+  const pts = eq.slice(-90);
+  const maxA = Math.max(...pts.map(p => Math.abs(p.pnl)), 1);
+  el.innerHTML = '<div class="chart">' + pts.map(p => {
+    const h = Math.max(2, Math.round(Math.abs(p.pnl) / maxA * 100));
+    const kind = p.pnl >= 0 ? "buy" : "sell";
+    return `<div class="col" title="${p.d}: ${p.n} pos, MTM ${fmtMoney(p.value)}, P&L ${fmtMoney(p.pnl, true)} (${fmtPct(p.roi)})">
+      <div class="b ${kind}" style="height:${h}%"></div></div>`;
+  }).join("") + "</div>" +
+    `<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px">
+      <span>${pts[0].d}</span><span>${pts[pts.length - 1].d}</span></div>`;
+}
+function renderFindings(sel, psum) {
+  const el = $(sel); if (!el) return;
+  const fs = (psum && psum.findings) || [];
+  if (!fs.length) { el.innerHTML = '<div class="empty">Findings appear once paper positions are marked to market.</div>'; return; }
+  el.innerHTML = '<ul class="findings">' + fs.map(f =>
+    `<li><b>${esc(f.title)}</b><span class="sub">${esc(f.text)}</span></li>`).join("") + "</ul>";
+}
+function paperRow(p) {
+  const link = edgarLink(p.acc);
+  return `<tr>
+    <td>${statusPill(p.status)}</td>
+    <td class="num">${fmtDate(p.fd)}<div class="sub">txn ${fmtDate(p.td)}</div></td>
+    <td><span class="ticker">${esc(p.tk)}</span><div class="sub">${esc(p.co)}</div></td>
+    <td>${esc(p.insider)}<div class="sub">${esc([p.rel, p.title].filter(Boolean).join(" · "))}</div></td>
+    <td class="num">${fmtNum(p.insider_sh)}<div class="sub">${fmtPx(p.insider_px)}</div></td>
+    <td class="num"><b>${fmtMoney(p.insider_val)}</b></td>
+    <td class="num">${fmtDate(p.entry_d)}<div class="sub">${fmtPx(p.entry_px)}</div></td>
+    ${pctCell(p.gap)}
+    <td class="num">${fmtPx(p.last_px)}<div class="sub">${fmtDate(p.last_d)}</div></td>
+    <td class="num">${fmtMoney(p.mtm)}</td>
+    <td class="num ${p.pnl > 0 ? "pos" : p.pnl < 0 ? "neg" : ""}">${fmtMoney(p.pnl, true)}</td>
+    ${pctCell(p.roi)}
+    ${pctCell(p.r1)}${pctCell(p.r5)}${pctCell(p.r21)}
+    <td style="text-align:center">${link}</td>
+  </tr>`;
+}
+function renderPaperPreview(sel, rows, psum) {
+  const el = $(sel); if (!el) return;
+  const latest = (rows || []).slice(0, 12);
+  if (!latest.length) { el.innerHTML = '<div class="empty">No paper trades yet.</div>'; return; }
+  el.innerHTML = `<div class="table-scroll"><table><thead><tr>
+    <th>Status</th><th class="num">Filed</th><th>Ticker</th><th>Insider</th>
+    <th class="num">Insider $</th><th class="num">Our entry</th><th class="num">Gap</th>
+    <th class="num">P&L</th><th class="num">ROI</th>
+  </tr></thead><tbody>` + latest.map(p => `<tr>
+    <td>${statusPill(p.status)}</td>
+    <td class="num">${fmtDate(p.fd)}</td>
+    <td><span class="ticker">${esc(p.tk)}</span></td>
+    <td>${esc(p.insider)}</td>
+    <td class="num">${fmtMoney(p.insider_val)}</td>
+    <td class="num">${fmtPx(p.entry_px)}<div class="sub">${fmtDate(p.entry_d)}</div></td>
+    ${pctCell(p.gap)}
+    <td class="num ${p.pnl > 0 ? "pos" : p.pnl < 0 ? "neg" : ""}">${fmtMoney(p.pnl, true)}</td>
+    ${pctCell(p.roi)}
+  </tr>`).join("") + `</tbody></table></div>
+    <div style="margin-top:10px"><a href="paper.html" class="btn ghost" style="width:100%;text-align:center">Open the full paper book →</a></div>`;
+}
+
 // ---------------------------------------------------------------- pages ----
 function emptyBanner() {
   return `<div class="card" style="margin-bottom:16px;border-left:4px solid var(--warn)">
@@ -667,11 +790,22 @@ function emptyBanner() {
 }
 
 async function initIndex() {
-  const [sum, recent] = await Promise.all([loadJSON("data/summary.json"), loadJSON("data/recent.json")]);
+  const [sum, recent, psum, ppos, peq] = await Promise.all([
+    loadJSON("data/summary.json"), loadJSON("data/recent.json"),
+    loadJSONOpt("data/paper/summary.json"), loadJSONOpt("data/paper/positions.json"),
+    loadJSONOpt("data/paper/equity.json"),
+  ]);
   if (!sum.counts.trades) $("main").insertAdjacentHTML("afterbegin", emptyBanner());
-  $(".hero .range").textContent = sum.counts.trades
-    ? `Coverage ${sum.range.from} → ${sum.range.to} · ${sum.counts.trades.toLocaleString()} trades · auto-updated daily`
-    : `Dataset initializing — first nightly collection pending`;
+  const nOpen = psum && psum.counts ? psum.counts.open : 0;
+  $(".hero .range").textContent = nOpen
+    ? `Paper book · ${nOpen.toLocaleString()} open $10k longs · last marked ${psum.asof || psum.generated || ""}`
+    : (sum.counts.trades
+      ? `Coverage ${sum.range.from} → ${sum.range.to} · ${sum.counts.trades.toLocaleString()} trades · paper book filling`
+      : `Dataset initializing — first automated collection pending`);
+  renderPaperKpis("#paperstats", psum);
+  renderEquity("#papereq", peq || []);
+  renderFindings("#paperfindings", psum);
+  renderPaperPreview("#paperlatest", ppos || [], psum);
   const count = n => n.toLocaleString("en-US");
   const cards = [
     ["Insider trades", count(sum.counts.trades), "across " + count(sum.counts.filings) + " filings", ""],
@@ -726,6 +860,80 @@ async function initIndex() {
       <span>${esc(c.tk || c.co)} <span class="sub">${esc(c.co)}</span></span>
       <span class="l-r neg">${fmtMoney(c.net, true)}</span></a></div>`).join("")
     : '<div class="empty">No open-market net sellers yet.</div>';
+}
+
+async function initPaper() {
+  const [psum, ppos, peq] = await Promise.all([
+    loadJSONOpt("data/paper/summary.json"),
+    loadJSONOpt("data/paper/positions.json"),
+    loadJSONOpt("data/paper/equity.json"),
+  ]);
+  renderPaperKpis("#paperstats", psum);
+  renderEquity("#papereq", peq || []);
+  renderFindings("#paperfindings", psum);
+  if (psum && psum.rule) {
+    const r = psum.rule;
+    $("#paperrule").innerHTML = `<ul class="clean">
+      <li><b>Signal</b> — ${esc(r.signal)}</li>
+      <li><b>Entry</b> — ${esc(r.entry)}</li>
+      <li><b>Size</b> — ${esc(r.size)}</li>
+      <li><b>Mark</b> — ${esc(r.mark)}</li>
+      <li><b>Lookahead</b> — ${esc(r.lookahead)}</li>
+      <li><b>Prices</b> — ${esc(r.prices)}</li>
+      <li><b>Costs</b> — ${esc(r.costs)}</li>
+    </ul>`;
+  }
+  const byRole = (psum && psum.by_role) || [];
+  const bySize = (psum && psum.by_size) || [];
+  if ($("#byrole")) barList($("#byrole"), byRole.map(x => ({
+    label: x.k, value: (x.mean || 0) * 100, kind: (x.mean || 0) >= 0 ? "buy" : "sell", sub: "n=" + x.n
+  })), { fmt: v => (v >= 0 ? "+" : "") + v.toFixed(2) + "%" });
+  if ($("#bysize")) barList($("#bysize"), bySize.map(x => ({
+    label: x.k, value: (x.mean || 0) * 100, kind: (x.mean || 0) >= 0 ? "buy" : "sell", sub: "n=" + x.n
+  })), { fmt: v => (v >= 0 ? "+" : "") + v.toFixed(2) + "%" });
+
+  const hz = (psum && psum.horizons) || {};
+  if ($("#horizons")) {
+    const rows = [["Entry-day close","r0"],["+1 session","r1"],["+5 sessions","r5"],["+21 sessions","r21"],["+63 sessions","r63"],["Entry gap vs insider","gap"]];
+    $("#horizons").innerHTML = `<table><thead><tr><th>Horizon</th><th class="num">n</th><th class="num">Mean</th><th class="num">Median</th><th class="num">Win rate</th></tr></thead><tbody>` +
+      rows.map(([lab,k]) => {
+        const s = hz[k] || {};
+        return `<tr><td>${lab}</td><td class="num">${s.n || 0}</td>
+          <td class="num ${s.mean>0?"pos":s.mean<0?"neg":""}">${fmtPct(s.mean)}</td>
+          <td class="num ${s.median>0?"pos":s.median<0?"neg":""}">${fmtPct(s.median)}</td>
+          <td class="num">${s.win_rate == null ? "—" : (s.win_rate*100).toFixed(1)+"%" }</td></tr>`;
+      }).join("") + "</tbody></table>";
+  }
+
+  const rows = ppos || [];
+  const COLS = [
+    { key: "status", label: "Status" },
+    { key: "fd", label: "Filed", cls: "num" },
+    { key: "tk", label: "Ticker" },
+    { key: "insider", label: "Insider" },
+    { key: "insider_sh", label: "Insider sh / px", cls: "num" },
+    { key: "insider_val", label: "Insider $", cls: "num" },
+    { key: "entry_d", label: "Our entry", cls: "num" },
+    { key: "gap", label: "Gap", cls: "num" },
+    { key: "last_px", label: "Last px", cls: "num" },
+    { key: "mtm", label: "MTM", cls: "num" },
+    { key: "pnl", label: "P&L", cls: "num" },
+    { key: "roi", label: "ROI", cls: "num" },
+    { key: "r1", label: "+1d", cls: "num" },
+    { key: "r5", label: "+5d", cls: "num" },
+    { key: "r21", label: "+21d", cls: "num" },
+    { key: "acc", label: "SEC" },
+  ];
+  const api = makeTable($("#paperTable"), COLS, rows, { per: 25, sortKey: "fd", row: paperRow });
+  const apply = () => {
+    const q = ($("#pq") && $("#pq").value.trim().toLowerCase()) || "";
+    const st = ($("#pstatus") && $("#pstatus").value) || "";
+    api.setFilter(r =>
+      (!st || r.status === st) &&
+      (!q || ((r.tk||"")+" "+(r.co||"")+" "+(r.insider||"")+" "+(r.title||"")).toLowerCase().includes(q)));
+  };
+  if ($("#pq")) $("#pq").addEventListener("input", apply);
+  if ($("#pstatus")) $("#pstatus").addEventListener("change", apply);
 }
 
 async function initTrades() {
@@ -863,7 +1071,25 @@ async function initInsiders() {
 }
 
 async function initAnalysis() {
-  const sum = await loadJSON("data/summary.json");
+  const [sum, psum] = await Promise.all([
+    loadJSON("data/summary.json"),
+    loadJSONOpt("data/paper/summary.json"),
+  ]);
+  renderPaperKpis("#paperstats", psum);
+  renderFindings("#paperfindings", psum);
+  const byRole = (psum && psum.by_role) || [];
+  const bySize = (psum && psum.by_size) || [];
+  if ($("#byrole")) barList($("#byrole"), byRole.map(x => ({
+    label: x.k, value: Math.abs(x.mean || 0) * 100, kind: (x.mean || 0) >= 0 ? "buy" : "sell", sub: "n=" + x.n
+  })), { fmt: v => v.toFixed(2) + "%" });
+  if ($("#bysize")) barList($("#bysize"), bySize.map(x => ({
+    label: x.k, value: Math.abs(x.mean || 0) * 100, kind: (x.mean || 0) >= 0 ? "buy" : "sell", sub: "n=" + x.n
+  })), { fmt: v => v.toFixed(2) + "%" });
+  const best = (psum && psum.best) || [], worst = (psum && psum.worst) || [];
+  if ($("#best")) $("#best").innerHTML = best.slice(0, 8).map(p =>
+    `<tr><td>${esc(p.tk)}</td><td>${esc(p.insider)}</td>${pctCell(p.roi)}<td class="num">${fmtMoney(p.pnl, true)}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">—</td></tr>';
+  if ($("#worst")) $("#worst").innerHTML = worst.slice(0, 8).map(p =>
+    `<tr><td>${esc(p.tk)}</td><td>${esc(p.insider)}</td>${pctCell(p.roi)}<td class="num">${fmtMoney(p.pnl, true)}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">—</td></tr>';
   // code table
   $("#codeTable").innerHTML = `<table><thead><tr><th>Code</th><th>Meaning</th><th class="num">Trades</th><th class="num">Value</th></tr></thead><tbody>` +
     sum.by_code.map(c => `<tr><td>${codePill(c.code, c.text)}</td><td>${esc(c.text)}</td>
@@ -939,7 +1165,7 @@ async function initAbout() {
 document.addEventListener("DOMContentLoaded", () => {
   const p = document.body.dataset.page;
   $$(".nav a").forEach(a => a.classList.toggle("active", a.dataset.nav === p));
-  const init = { index: initIndex, trades: initTrades, companies: initCompanies,
+  const init = { index: initIndex, paper: initPaper, trades: initTrades, companies: initCompanies,
     insiders: initInsiders, analysis: initAnalysis, about: initAbout }[p] || initAbout;
   setLastUpdated();
   init().catch(e => {
@@ -952,14 +1178,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 INDEX_BODY = """
-<section class="hero">
-  <h1>Every insider trade, tracked.</h1>
-  <p>CEOTrades collects <strong>all</strong> Form&nbsp;4 and Form&nbsp;5 insider transaction reports filed with
-  SEC&nbsp;EDGAR for publicly traded companies — automatically, with no manual input.
-  Directors, officers and 10%+ owners must disclose every purchase, sale, grant and exercise within two business days.</p>
+<section class="hero paper">
+  <h1>Follow insider buys. $10,000 a fill. Real prices.</h1>
+  <p>When an officer, director or 10% owner files an open-market purchase (Form&nbsp;4 code&nbsp;P),
+  the paper book buys <strong>$10,000</strong> of that stock at the <strong>next regular-session open</strong>
+  after the filing hits EDGAR — never the insider’s own fill. Positions stay open and are marked
+  to the latest verified close. No manual input.</p>
   <span class="range" data-slot="range">loading…</span>
 </section>
 
+<div class="steps">
+  <div class="step"><div class="n">1</div><h3>Insider files Form 4</h3><p>SEC EDGAR, parsed automatically. We record the insider’s price, shares and dollar amount.</p></div>
+  <div class="step"><div class="n">2</div><h3>We enter $10k next open</h3><p>First session strictly after the filing date. Filing-day prices are never used — no lookahead.</p></div>
+  <div class="step"><div class="n">3</div><h3>Track ROI at real closes</h3><p>Yahoo / Stooq / Nasdaq daily bars. Gap vs the insider fill, +1 / +5 / +21 day returns, live P&amp;L.</p></div>
+</div>
+
+<div class="grid g6" id="paperstats"></div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Paper-book equity <small>· weekday MTM of every $10k long</small></h3><div id="papereq"></div></div>
+  <div class="card"><h3>Findings <small>· computed, not guessed</small></h3><div id="paperfindings"></div></div>
+</div>
+
+<div class="card" style="margin-top:16px"><h3>Latest paper fills <small>· $10k per insider buy</small></h3><div id="paperlatest"></div></div>
+
+<h2 class="sec">Insider filings <small>· the raw Form 4 / Form 5 tape</small></h2>
 <div class="grid g6" id="stats"></div>
 
 <div class="grid g2" style="margin-top:16px">
@@ -978,6 +1221,46 @@ INDEX_BODY = """
   <div class="card"><h3>Top net buyers <small>· open-market P − S</small></h3><div id="buyers"></div></div>
   <div class="card"><h3>Top net sellers <small>· open-market P − S</small></h3><div id="sellers"></div></div>
 </div>
+"""
+
+PAPER_BODY = """
+<section class="hero paper">
+  <h1>Paper book</h1>
+  <p>Every simulated fill: $10,000 notional, next regular-session open after the Form&nbsp;4 filing date,
+  marked to the latest verified close. Insider price, shares and dollar amount are kept next to our fill
+  so the delay gap is visible. Positions are not closed — this is a forward test, not a round-trip backtest.</p>
+  <span class="range">Fixed $10,000 · no commissions modelled · no lookahead</span>
+</section>
+
+<div class="grid g6" id="paperstats"></div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Equity curve <small>· deployed vs mark-to-market</small></h3><div id="papereq"></div></div>
+  <div class="card"><h3>The rule</h3><div id="paperrule" class="doc"></div></div>
+</div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Findings</h3><div id="paperfindings"></div></div>
+  <div class="card"><h3>Return by horizon</h3><div id="horizons" class="table-scroll"></div></div>
+</div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Mean ROI by insider role</h3><div id="byrole"></div></div>
+  <div class="card"><h3>Mean ROI by insider purchase size</h3><div id="bysize"></div></div>
+</div>
+
+<div class="toolbar" style="margin-top:18px">
+  <input type="search" id="pq" placeholder="Search ticker, company, insider…">
+  <select id="pstatus">
+    <option value="">All statuses</option>
+    <option value="open">Open</option>
+    <option value="awaiting_entry">Awaiting next open</option>
+    <option value="no_price">No verified price</option>
+  </select>
+  <span class="spacer"></span>
+  <a class="btn ghost" href="data/paper/positions.csv" download>⬇ Download CSV</a>
+</div>
+<div id="paperTable"></div>
 """
 
 TRADES_BODY = """
@@ -1027,10 +1310,26 @@ INSIDERS_BODY = """
 
 ANALYSIS_BODY = """
 <section class="hero">
-  <h1>Analysis</h1>
-  <p>Where the insider dollars are going: transaction-type mix, net flows, daily rhythm and the biggest players.</p>
+  <h1>Findings</h1>
+  <p>Paper-book results first (real prices, no lookahead), then the raw Form&nbsp;4 tape: code mix, net flow and who is buying.</p>
 </section>
 
+<div class="grid g6" id="paperstats"></div>
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Paper-book findings</h3><div id="paperfindings"></div></div>
+  <div class="card"><h3>Mean ROI by role</h3>
+    <div id="byrole"></div>
+    <h3 style="margin-top:16px">By insider purchase size</h3>
+    <div id="bysize"></div></div>
+</div>
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Best paper trades <small>· by ROI</small></h3><div class="table-scroll">
+    <table><thead><tr><th>Ticker</th><th>Insider</th><th class="num">ROI</th><th class="num">P&amp;L</th></tr></thead><tbody id="best"></tbody></table></div></div>
+  <div class="card"><h3>Worst paper trades <small>· by ROI</small></h3><div class="table-scroll">
+    <table><thead><tr><th>Ticker</th><th>Insider</th><th class="num">ROI</th><th class="num">P&amp;L</th></tr></thead><tbody id="worst"></tbody></table></div></div>
+</div>
+
+<h2 class="sec">Form 4 / Form 5 tape</h2>
 <div class="grid g2">
   <div class="card"><h3>Transaction value by type</h3>
     <div class="donut-wrap"><div class="donut" id="donut"><div class="hole" id="donuthole"></div></div>
@@ -1077,13 +1376,19 @@ ABOUT_BODY = """
     executive officer and &gt;10% shareholder of a public company must file them.</p>
     <h3>2 · Enumeration</h3>
     <p>Each day the pipeline reads the SEC’s <b>daily master index</b>
-    (<code>sec.gov/Archives/edgar/daily-index/YYYY/MM/DD/master.json</code>) to list every Form 4/5 filed that day,
+    (<code>sec.gov/Archives/edgar/daily-index/YYYY/QTRq/master.YYYYMMDD.idx</code>) to list every Form 4/5 filed that day,
     with the EDGAR <b>full-text search API</b> (<code>efts.sec.gov</code>) as an automatic fallback and cross-check.</p>
     <h3>3 · Extraction</h3>
     <p>Each filing’s structured XML is downloaded and parsed (issuer, insider, relationship, and every
     non-derivative and derivative transaction: date, code, shares, price, shares after).</p>
-    <h3>4 · Storage & publishing</h3>
-    <p>Rows are merged into a growing dataset (amendments supersede originals) and this static site is regenerated
+    <h3>4 · Paper book</h3>
+    <p>Every non-derivative open-market purchase (code <b>P</b>) of common equity becomes a simulated
+    <b>$10,000</b> long, filled at the <b>next regular-session open after the filing date</b>. The insider’s
+    own price is stored only for the delay-gap comparison — it is never our fill. Positions stay open
+    and are marked to the latest Yahoo / Stooq / Nasdaq close.</p>
+    <h3>5 · Storage & publishing</h3>
+    <p>Rows are merged into a growing dataset (amendments supersede originals), the paper book is
+    re-marked, and this static site is regenerated
     and committed by <b>GitHub Actions every night at 04:00 UTC</b> — after EDGAR’s nightly index build.
     The site deploys automatically via GitHub Pages.</p>
     <h3>Automation status</h3>
@@ -1127,8 +1432,28 @@ ABOUT_BODY = """
       <li>Amendments (4/A) supersede the original filing; the latest version is kept.</li>
       <li>Filings for issuers with no U.S. ticker still appear (ticker shown as —).</li>
     </ul>
+    <h3>Paper-book fields</h3>
+    <table>
+      <tr><th>Field</th><th>Meaning</th></tr>
+      <tr><td>insider_sh / px / val</td><td>Shares, VWAP and dollars the insider reported (code P lots in that filing)</td></tr>
+      <tr><td>fd / td</td><td>Filing date (when it became public) / transaction date (when the insider traded)</td></tr>
+      <tr><td>entry_d / entry_px</td><td>Our fill: next session’s open after fd, from Yahoo/Stooq/Nasdaq</td></tr>
+      <tr><td>gap</td><td>(entry_px / insider_px) − 1 — move we missed before we could trade</td></tr>
+      <tr><td>shares / stake</td><td>Fractional shares bought so notional is exactly $10,000</td></tr>
+      <tr><td>last_px / mtm / pnl / roi</td><td>Latest close, mark-to-market, profit, (mtm/10000)−1</td></tr>
+      <tr><td>r0, r1, r5, r21, r63</td><td>Return from entry open to close of that session, then +N sessions</td></tr>
+    </table>
+    <h3>Paper-book caveats</h3>
+    <ul class="clean">
+      <li>No commissions, borrow, or bid/ask beyond using the next open.</li>
+      <li>Private purchases (still code P) are treated like open-market buys because Form 4 does not split them.</li>
+      <li>Tickers Yahoo/Stooq/Nasdaq do not price stay <code>no_price</code> — they are never silently filled.</li>
+      <li>Filing-day prices are never the fill. If the next session has not printed, status is <code>awaiting_entry</code>.</li>
+    </ul>
     <h3>Run it yourself</h3>
-    <p><code>python3 collector/collect.py --days 3</code> then <code>python3 collector/build_site.py</code>.
+    <p><code>python3 collector/collect.py --days 3 --no-backfill</code><br>
+    <code>python3 collector/paper_trade.py</code><br>
+    <code>python3 collector/build_site.py</code>.
     Standard library only. SEC fair-access policy: declared User-Agent, ≤10 req/s — this project self-throttles to 8/s.</p>
   </div>
 </div>
@@ -1140,10 +1465,9 @@ def build():
     from collect import load_dataset  # sharded trades-YYYY.json.gz reader
     stats_path = os.path.join(DATA_IN, "stats.json")
     rows = load_dataset(DATA_IN)
-    if not rows and not os.environ.get("CEOTRADES_ALLOW_EMPTY"):
-        print(f"ERROR: no dataset in {DATA_IN} — run collector/collect.py first.",
+    if not rows:
+        print(f"NOTE: no dataset in {DATA_IN} yet — writing an empty site shell.",
               file=sys.stderr)
-        sys.exit(1)
     stats = None
     if os.path.exists(stats_path):
         with open(stats_path, "r", encoding="utf-8") as f:
@@ -1153,6 +1477,24 @@ def build():
     summary = aggregate(rows)
     n_recent, n_months = write_data_outputs(rows, summary, stats)
     print(f"Wrote data outputs: recent={n_recent} rows, {n_months} month files, CSV rows={len(rows)}")
+    print("Paper-trading insider open-market buys …")
+    from paper_trade import run as paper_run
+    paper_run(DATA_IN, SITE_DATA, os.path.join(DATA_IN, "prices"))
+    pdir = os.path.join(SITE_DATA, "paper")
+    os.makedirs(pdir, exist_ok=True)
+    if not os.path.exists(os.path.join(pdir, "summary.json")):
+        json.dump({"generated": "", "counts": {"signals": 0, "open": 0, "awaiting_entry": 0, "no_price": 0},
+                   "capital": {"deployed": 0, "value": 0, "pnl": 0, "roi": None},
+                   "roi": {"n": 0}, "findings": [], "best": [], "worst": [],
+                   "by_role": [], "by_size": [], "horizons": {}, "rule": {}},
+                  open(os.path.join(pdir, "summary.json"), "w"), separators=(",", ":"))
+    if not os.path.exists(os.path.join(pdir, "positions.json")):
+        json.dump([], open(os.path.join(pdir, "positions.json"), "w"))
+    if not os.path.exists(os.path.join(pdir, "equity.json")):
+        json.dump([], open(os.path.join(pdir, "equity.json"), "w"))
+    if not os.path.exists(os.path.join(pdir, "positions.csv")):
+        open(os.path.join(pdir, "positions.csv"), "w").write(
+            "id,status,fd,td,tk,co,insider,insider_val,entry_px,last_px,pnl,roi\n")
 
     os.makedirs(SITE_CSS, exist_ok=True)
     os.makedirs(SITE_JS, exist_ok=True)
@@ -1162,18 +1504,20 @@ def build():
         f.write(JS)
 
     pages = [
-        ("index.html", "Insider Trade Dashboard", "index", INDEX_BODY,
-         "Dashboard of every insider trade filed with SEC EDGAR: buys, sells, grants and exercises at publicly traded companies."),
+        ("index.html", "Insider Paper-Trading Dashboard", "index", INDEX_BODY,
+         "Forward-test of insider open-market buys: $10,000 paper longs at the next open after each Form 4, marked to real prices."),
+        ("paper.html", "Paper Book", "paper", PAPER_BODY,
+         "Every simulated $10,000 fill following insider Form 4 purchases, with real entry prices, gap vs the insider, and live ROI."),
         ("trades.html", "All Trades", "trades", TRADES_BODY,
          "Searchable, filterable table of every insider transaction row."),
         ("companies.html", "Companies", "companies", COMPANIES_BODY,
          "Insider activity aggregated per publicly traded company."),
         ("insiders.html", "Insiders", "insiders", INSIDERS_BODY,
          "Directors, officers and 10%+ owners and their trades."),
-        ("analysis.html", "Analysis", "analysis", ANALYSIS_BODY,
-         "Insider flow analytics: code mix, net buyers and sellers, daily rhythm."),
+        ("analysis.html", "Findings", "analysis", ANALYSIS_BODY,
+         "Paper-book ROI findings plus insider flow analytics: code mix, net buyers and sellers."),
         ("about.html", "About & Methodology", "about", ABOUT_BODY,
-         "How CEOTrades automatically collects and verifies insider trade data."),
+         "How CEOTrades automatically collects Form 4s and forward-tests them at real prices."),
     ]
     for fn, title, active, body, desc in pages:
         with open(os.path.join(ROOT, fn), "w", encoding="utf-8") as f:

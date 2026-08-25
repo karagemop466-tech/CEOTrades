@@ -423,3 +423,8 @@ if __name__ == "__main__":
         print(f"SELF-TEST FAILED: {len(FAILURES)} failure(s): {FAILURES}")
         sys.exit(1)
     print("SELF-TEST PASSED: all checks green.")
+    # Paper engine (offline, no network) — same process as collect.yml.
+    paper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "paper_test.py")
+    rc = os.system(f"{sys.executable} {paper}")
+    if rc != 0:
+        sys.exit(1)

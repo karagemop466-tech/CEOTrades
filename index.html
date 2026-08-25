@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Insider Trade Dashboard · CEOTrades</title>
-<meta name="description" content="Dashboard of every insider trade filed with SEC EDGAR: buys, sells, grants and exercises at publicly traded companies.">
+<title>Insider Paper-Trading Dashboard · CEOTrades</title>
+<meta name="description" content="Forward-test of insider open-market buys: $10,000 paper longs at the next open after each Form 4, marked to real prices.">
 <link rel="stylesheet" href="css/site.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 </head>
@@ -14,24 +14,42 @@
     <a class="brand" href="index.html"><span class="brand-ico">📈</span>CEO<span>Trades</span></a>
     <nav>
     <a href="index.html" data-nav="index">Dashboard</a>
+    <a href="paper.html" data-nav="paper">Paper book</a>
     <a href="trades.html" data-nav="trades">Trades</a>
     <a href="companies.html" data-nav="companies">Companies</a>
     <a href="insiders.html" data-nav="insiders">Insiders</a>
-    <a href="analysis.html" data-nav="analysis">Analysis</a>
+    <a href="analysis.html" data-nav="analysis">Findings</a>
     <a href="about.html" data-nav="about">About</a>
 </nav>
   </div>
 </header>
 <main class="wrap">
 
-<section class="hero">
-  <h1>Every insider trade, tracked.</h1>
-  <p>CEOTrades collects <strong>all</strong> Form&nbsp;4 and Form&nbsp;5 insider transaction reports filed with
-  SEC&nbsp;EDGAR for publicly traded companies — automatically, with no manual input.
-  Directors, officers and 10%+ owners must disclose every purchase, sale, grant and exercise within two business days.</p>
+<section class="hero paper">
+  <h1>Follow insider buys. $10,000 a fill. Real prices.</h1>
+  <p>When an officer, director or 10% owner files an open-market purchase (Form&nbsp;4 code&nbsp;P),
+  the paper book buys <strong>$10,000</strong> of that stock at the <strong>next regular-session open</strong>
+  after the filing hits EDGAR — never the insider’s own fill. Positions stay open and are marked
+  to the latest verified close. No manual input.</p>
   <span class="range" data-slot="range">loading…</span>
 </section>
 
+<div class="steps">
+  <div class="step"><div class="n">1</div><h3>Insider files Form 4</h3><p>SEC EDGAR, parsed automatically. We record the insider’s price, shares and dollar amount.</p></div>
+  <div class="step"><div class="n">2</div><h3>We enter $10k next open</h3><p>First session strictly after the filing date. Filing-day prices are never used — no lookahead.</p></div>
+  <div class="step"><div class="n">3</div><h3>Track ROI at real closes</h3><p>Yahoo / Stooq / Nasdaq daily bars. Gap vs the insider fill, +1 / +5 / +21 day returns, live P&amp;L.</p></div>
+</div>
+
+<div class="grid g6" id="paperstats"></div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Paper-book equity <small>· weekday MTM of every $10k long</small></h3><div id="papereq"></div></div>
+  <div class="card"><h3>Findings <small>· computed, not guessed</small></h3><div id="paperfindings"></div></div>
+</div>
+
+<div class="card" style="margin-top:16px"><h3>Latest paper fills <small>· $10k per insider buy</small></h3><div id="paperlatest"></div></div>
+
+<h2 class="sec">Insider filings <small>· the raw Form 4 / Form 5 tape</small></h2>
 <div class="grid g6" id="stats"></div>
 
 <div class="grid g2" style="margin-top:16px">
@@ -54,7 +72,7 @@
 </main>
 <footer class="wrap foot">
   <div class="foot-in">
-    <div><strong>CEOTrades</strong> — insider trade intelligence.</div>
+    <div><strong>CEOTrades</strong> — insider paper trading. $10k per open-market buy, next session’s open.</div>
     <div class="foot-src">
       Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
       Form 4 / Form 5 filings · collected automatically by GitHub Actions ·

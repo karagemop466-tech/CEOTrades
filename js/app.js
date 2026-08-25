@@ -8,6 +8,9 @@ async function loadJSON(url) {
   if (!r.ok) throw new Error(url + " -> " + r.status);
   return r.json();
 }
+async function loadJSONOpt(url) {
+  try { return await loadJSON(url); } catch (e) { return null; }
+}
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -31,6 +34,25 @@ function fmtMoney(n, signed) {
 function fmtDate(d) {
   if (!d) return "—";
   return d; // ISO already
+}
+function fmtPct(n) {
+  if (n === null || n === undefined || n === "" || isNaN(n)) return "—";
+  const s = (Number(n) * 100).toFixed(2) + "%";
+  return Number(n) > 0 ? "+" + s : s;
+}
+function fmtPx(n) {
+  if (n === null || n === undefined || n === "" || isNaN(n)) return "—";
+  return "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+}
+function statusPill(st) {
+  if (st === "open") return '<span class="pill buy">open</span>';
+  if (st === "awaiting_entry") return '<span class="pill pending">awaiting open</span>';
+  return '<span class="pill dead">no price</span>';
+}
+function pctCell(n) {
+  if (n === null || n === undefined || isNaN(n)) return '<td class="num">—</td>';
+  const cls = n > 0 ? "pos" : n < 0 ? "neg" : "";
+  return `<td class="num ${cls}">${fmtPct(n)}</td>`;
 }
 function sideClass(code) {
   if (code === "P") return "buy";
@@ -149,6 +171,92 @@ function setLastUpdated() {
   }).catch(() => {});
 }
 
+function edgarLink(acc) {
+  if (!acc) return "";
+  const cik = parseInt(String(acc).slice(0, 10), 10);
+  const href = `https://www.sec.gov/Archives/edgar/data/${cik}/${String(acc).replace(/-/g, "")}-index.htm`;
+  return `<a href="${href}" target="_blank" rel="noopener" title="View filing on SEC EDGAR">↗</a>`;
+}
+function renderPaperKpis(sel, psum) {
+  const el = $(sel); if (!el) return;
+  if (!psum || !psum.counts) {
+    el.innerHTML = '<div class="card empty" style="grid-column:1/-1">Paper book will fill after the first collection of open-market buys (code P).</div>';
+    return;
+  }
+  const cap = psum.capital || {}, roi = psum.roi || {}, c = psum.counts;
+  const cards = [
+    ["Signals", (c.signals || 0).toLocaleString(), "insider open-market buys", ""],
+    ["Open positions", (c.open || 0).toLocaleString(), (c.awaiting_entry || 0) + " awaiting next open", ""],
+    ["Capital deployed", fmtMoney(cap.deployed), "$10,000 × open positions", ""],
+    ["Mark-to-market", fmtMoney(cap.value), "latest regular-session close", ""],
+    ["Paper P&L", fmtMoney(cap.pnl, true), "ROI " + fmtPct(cap.roi), cap.pnl >= 0 ? "buy" : "sell"],
+    ["Win rate", roi.n ? ((roi.win_rate || 0) * 100).toFixed(1) + "%" : "—", "positions with ROI > 0 · n=" + (roi.n || 0), roi.win_rate >= 0.5 ? "buy" : ""],
+  ];
+  el.innerHTML = cards.map(x =>
+    `<div class="card stat"><div class="lbl">${x[0]}</div><div class="val ${x[3]}">${x[1]}</div><div class="sub">${x[2]}</div></div>`).join("");
+}
+function renderEquity(sel, eq) {
+  const el = $(sel); if (!el) return;
+  if (!eq || !eq.length) { el.innerHTML = '<div class="empty">Equity curve appears after the first fills.</div>'; return; }
+  const pts = eq.slice(-90);
+  const maxA = Math.max(...pts.map(p => Math.abs(p.pnl)), 1);
+  el.innerHTML = '<div class="chart">' + pts.map(p => {
+    const h = Math.max(2, Math.round(Math.abs(p.pnl) / maxA * 100));
+    const kind = p.pnl >= 0 ? "buy" : "sell";
+    return `<div class="col" title="${p.d}: ${p.n} pos, MTM ${fmtMoney(p.value)}, P&L ${fmtMoney(p.pnl, true)} (${fmtPct(p.roi)})">
+      <div class="b ${kind}" style="height:${h}%"></div></div>`;
+  }).join("") + "</div>" +
+    `<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px">
+      <span>${pts[0].d}</span><span>${pts[pts.length - 1].d}</span></div>`;
+}
+function renderFindings(sel, psum) {
+  const el = $(sel); if (!el) return;
+  const fs = (psum && psum.findings) || [];
+  if (!fs.length) { el.innerHTML = '<div class="empty">Findings appear once paper positions are marked to market.</div>'; return; }
+  el.innerHTML = '<ul class="findings">' + fs.map(f =>
+    `<li><b>${esc(f.title)}</b><span class="sub">${esc(f.text)}</span></li>`).join("") + "</ul>";
+}
+function paperRow(p) {
+  const link = edgarLink(p.acc);
+  return `<tr>
+    <td>${statusPill(p.status)}</td>
+    <td class="num">${fmtDate(p.fd)}<div class="sub">txn ${fmtDate(p.td)}</div></td>
+    <td><span class="ticker">${esc(p.tk)}</span><div class="sub">${esc(p.co)}</div></td>
+    <td>${esc(p.insider)}<div class="sub">${esc([p.rel, p.title].filter(Boolean).join(" · "))}</div></td>
+    <td class="num">${fmtNum(p.insider_sh)}<div class="sub">${fmtPx(p.insider_px)}</div></td>
+    <td class="num"><b>${fmtMoney(p.insider_val)}</b></td>
+    <td class="num">${fmtDate(p.entry_d)}<div class="sub">${fmtPx(p.entry_px)}</div></td>
+    ${pctCell(p.gap)}
+    <td class="num">${fmtPx(p.last_px)}<div class="sub">${fmtDate(p.last_d)}</div></td>
+    <td class="num">${fmtMoney(p.mtm)}</td>
+    <td class="num ${p.pnl > 0 ? "pos" : p.pnl < 0 ? "neg" : ""}">${fmtMoney(p.pnl, true)}</td>
+    ${pctCell(p.roi)}
+    ${pctCell(p.r1)}${pctCell(p.r5)}${pctCell(p.r21)}
+    <td style="text-align:center">${link}</td>
+  </tr>`;
+}
+function renderPaperPreview(sel, rows, psum) {
+  const el = $(sel); if (!el) return;
+  const latest = (rows || []).slice(0, 12);
+  if (!latest.length) { el.innerHTML = '<div class="empty">No paper trades yet.</div>'; return; }
+  el.innerHTML = `<div class="table-scroll"><table><thead><tr>
+    <th>Status</th><th class="num">Filed</th><th>Ticker</th><th>Insider</th>
+    <th class="num">Insider $</th><th class="num">Our entry</th><th class="num">Gap</th>
+    <th class="num">P&L</th><th class="num">ROI</th>
+  </tr></thead><tbody>` + latest.map(p => `<tr>
+    <td>${statusPill(p.status)}</td>
+    <td class="num">${fmtDate(p.fd)}</td>
+    <td><span class="ticker">${esc(p.tk)}</span></td>
+    <td>${esc(p.insider)}</td>
+    <td class="num">${fmtMoney(p.insider_val)}</td>
+    <td class="num">${fmtPx(p.entry_px)}<div class="sub">${fmtDate(p.entry_d)}</div></td>
+    ${pctCell(p.gap)}
+    <td class="num ${p.pnl > 0 ? "pos" : p.pnl < 0 ? "neg" : ""}">${fmtMoney(p.pnl, true)}</td>
+    ${pctCell(p.roi)}
+  </tr>`).join("") + `</tbody></table></div>
+    <div style="margin-top:10px"><a href="paper.html" class="btn ghost" style="width:100%;text-align:center">Open the full paper book →</a></div>`;
+}
+
 // ---------------------------------------------------------------- pages ----
 function emptyBanner() {
   return `<div class="card" style="margin-bottom:16px;border-left:4px solid var(--warn)">
@@ -158,11 +266,22 @@ function emptyBanner() {
 }
 
 async function initIndex() {
-  const [sum, recent] = await Promise.all([loadJSON("data/summary.json"), loadJSON("data/recent.json")]);
+  const [sum, recent, psum, ppos, peq] = await Promise.all([
+    loadJSON("data/summary.json"), loadJSON("data/recent.json"),
+    loadJSONOpt("data/paper/summary.json"), loadJSONOpt("data/paper/positions.json"),
+    loadJSONOpt("data/paper/equity.json"),
+  ]);
   if (!sum.counts.trades) $("main").insertAdjacentHTML("afterbegin", emptyBanner());
-  $(".hero .range").textContent = sum.counts.trades
-    ? `Coverage ${sum.range.from} → ${sum.range.to} · ${sum.counts.trades.toLocaleString()} trades · auto-updated daily`
-    : `Dataset initializing — first nightly collection pending`;
+  const nOpen = psum && psum.counts ? psum.counts.open : 0;
+  $(".hero .range").textContent = nOpen
+    ? `Paper book · ${nOpen.toLocaleString()} open $10k longs · last marked ${psum.asof || psum.generated || ""}`
+    : (sum.counts.trades
+      ? `Coverage ${sum.range.from} → ${sum.range.to} · ${sum.counts.trades.toLocaleString()} trades · paper book filling`
+      : `Dataset initializing — first automated collection pending`);
+  renderPaperKpis("#paperstats", psum);
+  renderEquity("#papereq", peq || []);
+  renderFindings("#paperfindings", psum);
+  renderPaperPreview("#paperlatest", ppos || [], psum);
   const count = n => n.toLocaleString("en-US");
   const cards = [
     ["Insider trades", count(sum.counts.trades), "across " + count(sum.counts.filings) + " filings", ""],
@@ -217,6 +336,80 @@ async function initIndex() {
       <span>${esc(c.tk || c.co)} <span class="sub">${esc(c.co)}</span></span>
       <span class="l-r neg">${fmtMoney(c.net, true)}</span></a></div>`).join("")
     : '<div class="empty">No open-market net sellers yet.</div>';
+}
+
+async function initPaper() {
+  const [psum, ppos, peq] = await Promise.all([
+    loadJSONOpt("data/paper/summary.json"),
+    loadJSONOpt("data/paper/positions.json"),
+    loadJSONOpt("data/paper/equity.json"),
+  ]);
+  renderPaperKpis("#paperstats", psum);
+  renderEquity("#papereq", peq || []);
+  renderFindings("#paperfindings", psum);
+  if (psum && psum.rule) {
+    const r = psum.rule;
+    $("#paperrule").innerHTML = `<ul class="clean">
+      <li><b>Signal</b> — ${esc(r.signal)}</li>
+      <li><b>Entry</b> — ${esc(r.entry)}</li>
+      <li><b>Size</b> — ${esc(r.size)}</li>
+      <li><b>Mark</b> — ${esc(r.mark)}</li>
+      <li><b>Lookahead</b> — ${esc(r.lookahead)}</li>
+      <li><b>Prices</b> — ${esc(r.prices)}</li>
+      <li><b>Costs</b> — ${esc(r.costs)}</li>
+    </ul>`;
+  }
+  const byRole = (psum && psum.by_role) || [];
+  const bySize = (psum && psum.by_size) || [];
+  if ($("#byrole")) barList($("#byrole"), byRole.map(x => ({
+    label: x.k, value: (x.mean || 0) * 100, kind: (x.mean || 0) >= 0 ? "buy" : "sell", sub: "n=" + x.n
+  })), { fmt: v => (v >= 0 ? "+" : "") + v.toFixed(2) + "%" });
+  if ($("#bysize")) barList($("#bysize"), bySize.map(x => ({
+    label: x.k, value: (x.mean || 0) * 100, kind: (x.mean || 0) >= 0 ? "buy" : "sell", sub: "n=" + x.n
+  })), { fmt: v => (v >= 0 ? "+" : "") + v.toFixed(2) + "%" });
+
+  const hz = (psum && psum.horizons) || {};
+  if ($("#horizons")) {
+    const rows = [["Entry-day close","r0"],["+1 session","r1"],["+5 sessions","r5"],["+21 sessions","r21"],["+63 sessions","r63"],["Entry gap vs insider","gap"]];
+    $("#horizons").innerHTML = `<table><thead><tr><th>Horizon</th><th class="num">n</th><th class="num">Mean</th><th class="num">Median</th><th class="num">Win rate</th></tr></thead><tbody>` +
+      rows.map(([lab,k]) => {
+        const s = hz[k] || {};
+        return `<tr><td>${lab}</td><td class="num">${s.n || 0}</td>
+          <td class="num ${s.mean>0?"pos":s.mean<0?"neg":""}">${fmtPct(s.mean)}</td>
+          <td class="num ${s.median>0?"pos":s.median<0?"neg":""}">${fmtPct(s.median)}</td>
+          <td class="num">${s.win_rate == null ? "—" : (s.win_rate*100).toFixed(1)+"%" }</td></tr>`;
+      }).join("") + "</tbody></table>";
+  }
+
+  const rows = ppos || [];
+  const COLS = [
+    { key: "status", label: "Status" },
+    { key: "fd", label: "Filed", cls: "num" },
+    { key: "tk", label: "Ticker" },
+    { key: "insider", label: "Insider" },
+    { key: "insider_sh", label: "Insider sh / px", cls: "num" },
+    { key: "insider_val", label: "Insider $", cls: "num" },
+    { key: "entry_d", label: "Our entry", cls: "num" },
+    { key: "gap", label: "Gap", cls: "num" },
+    { key: "last_px", label: "Last px", cls: "num" },
+    { key: "mtm", label: "MTM", cls: "num" },
+    { key: "pnl", label: "P&L", cls: "num" },
+    { key: "roi", label: "ROI", cls: "num" },
+    { key: "r1", label: "+1d", cls: "num" },
+    { key: "r5", label: "+5d", cls: "num" },
+    { key: "r21", label: "+21d", cls: "num" },
+    { key: "acc", label: "SEC" },
+  ];
+  const api = makeTable($("#paperTable"), COLS, rows, { per: 25, sortKey: "fd", row: paperRow });
+  const apply = () => {
+    const q = ($("#pq") && $("#pq").value.trim().toLowerCase()) || "";
+    const st = ($("#pstatus") && $("#pstatus").value) || "";
+    api.setFilter(r =>
+      (!st || r.status === st) &&
+      (!q || ((r.tk||"")+" "+(r.co||"")+" "+(r.insider||"")+" "+(r.title||"")).toLowerCase().includes(q)));
+  };
+  if ($("#pq")) $("#pq").addEventListener("input", apply);
+  if ($("#pstatus")) $("#pstatus").addEventListener("change", apply);
 }
 
 async function initTrades() {
@@ -354,7 +547,25 @@ async function initInsiders() {
 }
 
 async function initAnalysis() {
-  const sum = await loadJSON("data/summary.json");
+  const [sum, psum] = await Promise.all([
+    loadJSON("data/summary.json"),
+    loadJSONOpt("data/paper/summary.json"),
+  ]);
+  renderPaperKpis("#paperstats", psum);
+  renderFindings("#paperfindings", psum);
+  const byRole = (psum && psum.by_role) || [];
+  const bySize = (psum && psum.by_size) || [];
+  if ($("#byrole")) barList($("#byrole"), byRole.map(x => ({
+    label: x.k, value: Math.abs(x.mean || 0) * 100, kind: (x.mean || 0) >= 0 ? "buy" : "sell", sub: "n=" + x.n
+  })), { fmt: v => v.toFixed(2) + "%" });
+  if ($("#bysize")) barList($("#bysize"), bySize.map(x => ({
+    label: x.k, value: Math.abs(x.mean || 0) * 100, kind: (x.mean || 0) >= 0 ? "buy" : "sell", sub: "n=" + x.n
+  })), { fmt: v => v.toFixed(2) + "%" });
+  const best = (psum && psum.best) || [], worst = (psum && psum.worst) || [];
+  if ($("#best")) $("#best").innerHTML = best.slice(0, 8).map(p =>
+    `<tr><td>${esc(p.tk)}</td><td>${esc(p.insider)}</td>${pctCell(p.roi)}<td class="num">${fmtMoney(p.pnl, true)}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">—</td></tr>';
+  if ($("#worst")) $("#worst").innerHTML = worst.slice(0, 8).map(p =>
+    `<tr><td>${esc(p.tk)}</td><td>${esc(p.insider)}</td>${pctCell(p.roi)}<td class="num">${fmtMoney(p.pnl, true)}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">—</td></tr>';
   // code table
   $("#codeTable").innerHTML = `<table><thead><tr><th>Code</th><th>Meaning</th><th class="num">Trades</th><th class="num">Value</th></tr></thead><tbody>` +
     sum.by_code.map(c => `<tr><td>${codePill(c.code, c.text)}</td><td>${esc(c.text)}</td>
@@ -430,7 +641,7 @@ async function initAbout() {
 document.addEventListener("DOMContentLoaded", () => {
   const p = document.body.dataset.page;
   $$(".nav a").forEach(a => a.classList.toggle("active", a.dataset.nav === p));
-  const init = { index: initIndex, trades: initTrades, companies: initCompanies,
+  const init = { index: initIndex, paper: initPaper, trades: initTrades, companies: initCompanies,
     insiders: initInsiders, analysis: initAnalysis, about: initAbout }[p] || initAbout;
   setLastUpdated();
   init().catch(e => {

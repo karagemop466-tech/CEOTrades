@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>About & Methodology · CEOTrades</title>
-<meta name="description" content="How CEOTrades automatically collects and verifies insider trade data.">
+<meta name="description" content="How CEOTrades automatically collects Form 4s and forward-tests them at real prices.">
 <link rel="stylesheet" href="css/site.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 </head>
@@ -14,10 +14,11 @@
     <a class="brand" href="index.html"><span class="brand-ico">📈</span>CEO<span>Trades</span></a>
     <nav>
     <a href="index.html" data-nav="index">Dashboard</a>
+    <a href="paper.html" data-nav="paper">Paper book</a>
     <a href="trades.html" data-nav="trades">Trades</a>
     <a href="companies.html" data-nav="companies">Companies</a>
     <a href="insiders.html" data-nav="insiders">Insiders</a>
-    <a href="analysis.html" data-nav="analysis">Analysis</a>
+    <a href="analysis.html" data-nav="analysis">Findings</a>
     <a href="about.html" data-nav="about">About</a>
 </nav>
   </div>
@@ -41,13 +42,19 @@
     executive officer and &gt;10% shareholder of a public company must file them.</p>
     <h3>2 · Enumeration</h3>
     <p>Each day the pipeline reads the SEC’s <b>daily master index</b>
-    (<code>sec.gov/Archives/edgar/daily-index/YYYY/MM/DD/master.json</code>) to list every Form 4/5 filed that day,
+    (<code>sec.gov/Archives/edgar/daily-index/YYYY/QTRq/master.YYYYMMDD.idx</code>) to list every Form 4/5 filed that day,
     with the EDGAR <b>full-text search API</b> (<code>efts.sec.gov</code>) as an automatic fallback and cross-check.</p>
     <h3>3 · Extraction</h3>
     <p>Each filing’s structured XML is downloaded and parsed (issuer, insider, relationship, and every
     non-derivative and derivative transaction: date, code, shares, price, shares after).</p>
-    <h3>4 · Storage & publishing</h3>
-    <p>Rows are merged into a growing dataset (amendments supersede originals) and this static site is regenerated
+    <h3>4 · Paper book</h3>
+    <p>Every non-derivative open-market purchase (code <b>P</b>) of common equity becomes a simulated
+    <b>$10,000</b> long, filled at the <b>next regular-session open after the filing date</b>. The insider’s
+    own price is stored only for the delay-gap comparison — it is never our fill. Positions stay open
+    and are marked to the latest Yahoo / Stooq / Nasdaq close.</p>
+    <h3>5 · Storage & publishing</h3>
+    <p>Rows are merged into a growing dataset (amendments supersede originals), the paper book is
+    re-marked, and this static site is regenerated
     and committed by <b>GitHub Actions every night at 04:00 UTC</b> — after EDGAR’s nightly index build.
     The site deploys automatically via GitHub Pages.</p>
     <h3>Automation status</h3>
@@ -91,8 +98,28 @@
       <li>Amendments (4/A) supersede the original filing; the latest version is kept.</li>
       <li>Filings for issuers with no U.S. ticker still appear (ticker shown as —).</li>
     </ul>
+    <h3>Paper-book fields</h3>
+    <table>
+      <tr><th>Field</th><th>Meaning</th></tr>
+      <tr><td>insider_sh / px / val</td><td>Shares, VWAP and dollars the insider reported (code P lots in that filing)</td></tr>
+      <tr><td>fd / td</td><td>Filing date (when it became public) / transaction date (when the insider traded)</td></tr>
+      <tr><td>entry_d / entry_px</td><td>Our fill: next session’s open after fd, from Yahoo/Stooq/Nasdaq</td></tr>
+      <tr><td>gap</td><td>(entry_px / insider_px) − 1 — move we missed before we could trade</td></tr>
+      <tr><td>shares / stake</td><td>Fractional shares bought so notional is exactly $10,000</td></tr>
+      <tr><td>last_px / mtm / pnl / roi</td><td>Latest close, mark-to-market, profit, (mtm/10000)−1</td></tr>
+      <tr><td>r0, r1, r5, r21, r63</td><td>Return from entry open to close of that session, then +N sessions</td></tr>
+    </table>
+    <h3>Paper-book caveats</h3>
+    <ul class="clean">
+      <li>No commissions, borrow, or bid/ask beyond using the next open.</li>
+      <li>Private purchases (still code P) are treated like open-market buys because Form 4 does not split them.</li>
+      <li>Tickers Yahoo/Stooq/Nasdaq do not price stay <code>no_price</code> — they are never silently filled.</li>
+      <li>Filing-day prices are never the fill. If the next session has not printed, status is <code>awaiting_entry</code>.</li>
+    </ul>
     <h3>Run it yourself</h3>
-    <p><code>python3 collector/collect.py --days 3</code> then <code>python3 collector/build_site.py</code>.
+    <p><code>python3 collector/collect.py --days 3 --no-backfill</code><br>
+    <code>python3 collector/paper_trade.py</code><br>
+    <code>python3 collector/build_site.py</code>.
     Standard library only. SEC fair-access policy: declared User-Agent, ≤10 req/s — this project self-throttles to 8/s.</p>
   </div>
 </div>
@@ -100,7 +127,7 @@
 </main>
 <footer class="wrap foot">
   <div class="foot-in">
-    <div><strong>CEOTrades</strong> — insider trade intelligence.</div>
+    <div><strong>CEOTrades</strong> — insider paper trading. $10k per open-market buy, next session’s open.</div>
     <div class="foot-src">
       Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
       Form 4 / Form 5 filings · collected automatically by GitHub Actions ·
