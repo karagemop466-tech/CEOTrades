@@ -1,0 +1,103 @@
+# NOTE: this is the GitHub Actions workflow for this repo, stored here as a
+# regular file because the automation app used in this session lacks the
+# `workflows` repository permission needed to commit under .github/workflows/.
+#
+# To activate the daily automation (one-time, ~30 seconds):
+#   1. Copy this file's content to `.github/workflows/collect.yml`
+#      (GitHub web UI: branch -> + Create new file -> paste -> commit,
+#       or locally:  mkdir -p .github/workflows && cp collector/pipeline.yml .github/workflows/collect.yml)
+#   2. (recommended) merge the open pull request into main so GitHub Pages
+#      (configured on main /) publishes the dashboard, or point Pages at this
+#      branch in the repo Settings.
+# After that the pipeline runs every night at 04:00 UTC with no further input.
+name: Collect insider trades
+
+# Fully automated pipeline:
+#   1. parser self-test (no network)
+#   2. collect Form 4/5 filings from SEC EDGAR for the requested window
+#      (incremental — merges into the committed dataset)
+#   3. regenerate the static dashboard
+#   4. commit + push (GitHub Pages publishes automatically)
+#
+# Schedule: 04:00 UTC daily — after EDGAR's nightly index build (indexes
+# update ~10:00 PM ET; ownership forms filed late are disseminated the next
+# business day). 3-day window by default so late-indexed filings are caught.
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Calendar days back to collect (ending yesterday)"
+        required: false
+        default: "3"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ceotrades-collect
+  cancel-in-progress: false
+
+jobs:
+  collect-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Parser self-test (offline)
+        run: python3 collector/selftest.py
+
+      - name: Probe SEC access (diagnostic only)
+        run: |
+          python3 - <<'PY'
+          import urllib.request
+          from datetime import date, timedelta
+          d = date.today() - timedelta(days=1)
+          url = f"https://www.sec.gov/Archives/edgar/daily-index/{d.year:04d}/{d.month:02d}/{d.day:02d}/master.json"
+          req = urllib.request.Request(url, headers={"User-Agent": "CEOTrades Insider-Trade Collector (github.com/karagemop466-tech/CEOTrades)"})
+          try:
+              r = urllib.request.urlopen(req, timeout=30)
+              body = r.read()
+              print(f"SEC reachable: HTTP {r.status}, {len(body)} bytes for {d}")
+          except Exception as e:
+              print(f"SEC probe failed ({e}) — collector will rely on fallback enumeration")
+          PY
+
+      - name: Collect Form 4/5 filings
+        env:
+          DAYS: ${{ github.event.inputs.days || '3' }}
+        run: python3 collector/collect.py --days "$DAYS" --rate 8
+
+      - name: Build static site
+        run: python3 collector/build_site.py
+
+      - name: Sanity-check outputs
+        run: |
+          python3 - <<'PY'
+          import json, os
+          s = json.load(open("data/summary.json"))
+          n = s["counts"]["trades"]
+          assert n > 0, "summary has 0 trades"
+          print(f"dataset OK: {n} trades, {s['counts']['companies']} companies, "
+                f"range {s['range']['from']}..{s['range']['to']}")
+          assert os.path.getsize("data/trades.csv") > 1000, "csv suspiciously small"
+          PY
+
+      - name: Commit and push
+        run: |
+          git config user.name "ceotrades-bot"
+          git config user.email "41898282+ceotrades-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore(data): insider trade update $(date -u +%Y-%m-%d)"
+            git push
+          fi
