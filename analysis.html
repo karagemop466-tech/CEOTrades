@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analysis · CEOTrades</title>
+<meta name="description" content="Insider flow analytics: code mix, net buyers and sellers, daily rhythm.">
+<link rel="stylesheet" href="css/site.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+</head>
+<body data-page="analysis">
+<header class="top">
+  <div class="wrap nav">
+    <a class="brand" href="index.html"><span class="brand-ico">📈</span>CEO<span>Trades</span></a>
+    <nav>
+    <a href="index.html" data-nav="index">Dashboard</a>
+    <a href="trades.html" data-nav="trades">Trades</a>
+    <a href="companies.html" data-nav="companies">Companies</a>
+    <a href="insiders.html" data-nav="insiders">Insiders</a>
+    <a href="analysis.html" data-nav="analysis">Analysis</a>
+    <a href="about.html" data-nav="about">About</a>
+</nav>
+  </div>
+</header>
+<main class="wrap">
+
+<section class="hero">
+  <h1>Analysis</h1>
+  <p>Where the insider dollars are going: transaction-type mix, net flows, daily rhythm and the biggest players.</p>
+</section>
+
+<div class="grid g2">
+  <div class="card"><h3>Transaction value by type</h3>
+    <div class="donut-wrap"><div class="donut" id="donut"><div class="hole" id="donuthole"></div></div>
+    <div class="legend" id="legend"></div></div></div>
+  <div class="card"><h3>By transaction code</h3><div id="codeTable" class="table-scroll"></div></div>
+</div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Daily buys vs sells <small>· last 60 days, $</small></h3>
+    <div id="netchart"></div><div id="netx"></div></div>
+  <div class="card"><h3>Filing mix</h3><div id="formmix" class="doc"></div>
+    <h3 style="margin-top:16px">Reporter relationship</h3><div id="relBars"></div></div>
+</div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Top 10 net buyers <small>· P − S $</small></h3><div class="table-scroll">
+    <table><thead><tr><th>Ticker</th><th>Company</th><th class="num">Buys $</th><th class="num">Sells $</th><th class="num">Net $</th></tr></thead><tbody id="ntb"></tbody></table></div></div>
+  <div class="card"><h3>Top 10 net sellers <small>· P − S $</small></h3><div class="table-scroll">
+    <table><thead><tr><th>Ticker</th><th>Company</th><th class="num">Buys $</th><th class="num">Sells $</th><th class="num">Net $</th></tr></thead><tbody id="nts"></tbody></table></div></div>
+</div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Biggest open-market buyers <small>· insiders, code P</small></h3><div class="table-scroll">
+    <table><thead><tr><th>Insider</th><th>Companies</th><th class="num">Purchases $</th></tr></thead><tbody id="ntp"></tbody></table></div></div>
+  <div class="card"><h3>Most traded security types</h3><div id="secBars"></div></div>
+</div>
+
+</main>
+<footer class="wrap foot">
+  <div class="foot-in">
+    <div><strong>CEOTrades</strong> — insider trade intelligence.</div>
+    <div class="foot-src">
+      Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
+      Form 4 / Form 5 filings · collected automatically by GitHub Actions ·
+      <span data-slot="last-updated">loading…</span>
+    </div>
+    <div class="foot-disc">Data is public SEC filing data. Not investment advice.</div>
+  </div>
+</footer>
+<script src="js/app.js"></script>
+</body>
+</html>

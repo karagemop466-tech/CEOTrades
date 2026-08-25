@@ -18,7 +18,6 @@ Standard library only.
 from __future__ import annotations
 
 import csv
-import gzip
 import json
 import os
 import sys
@@ -32,7 +31,11 @@ SITE_DATA = os.path.join(ROOT, "data")
 SITE_CSS = os.path.join(ROOT, "css")
 SITE_JS = os.path.join(ROOT, "js")
 
-RECENT_DAYS = 90
+RECENT_DAYS = 14          # dashboard/default trades window (kept small & fast)
+RECENT_MAX_ROWS = 25000   # hard cap so recent.json stays snappy
+CSV_MAX_ROWS = 200000     # bound for data/trades.csv (full history is sharded
+                          # into data/csv/YYYY-MM.csv, always < GitHub's 100MB)
+LIST_CAP = 5000           # companies/insiders rows embedded in summary.json
 TOP_N = 60
 
 CODE_TEXT = {
@@ -235,8 +238,9 @@ def aggregate(rows: list[dict]) -> dict:
             {"sec": k, "count": v["count"], "value": round(v["value"], 2)}
             for k, v in sorted(by_security.items(), key=lambda kv: -kv[1]["count"])[:30]
         ],
-        "companies": comp_list,
-        "insiders": ins_list,
+        "companies": comp_list[:LIST_CAP],
+        "insiders": ins_list[:LIST_CAP],
+        "list_cap": LIST_CAP,
         "top_companies": comp_list[:TOP_N],
         "top_insiders": ins_list[:TOP_N],
         "net_buyers": top_buyers[:TOP_N],
@@ -283,8 +287,15 @@ def write_csv(rows: list[dict], path: str):
 def write_data_outputs(rows: list[dict], summary: dict, stats: dict | None):
     os.makedirs(SITE_DATA, exist_ok=True)
     os.makedirs(os.path.join(SITE_DATA, "months"), exist_ok=True)
+    os.makedirs(os.path.join(SITE_DATA, "csv"), exist_ok=True)
 
-    write_csv(rows, os.path.join(SITE_DATA, "trades.csv"))
+    rows_sorted = sorted(rows, key=lambda r: (r.get("fd", ""), r.get("td") or ""),
+                         reverse=True)
+
+    # data/trades.csv — most recent rows (bounded); full history is sharded
+    # per-month under data/csv/ so no single file can outgrow GitHub Pages.
+    write_csv(rows_sorted[:CSV_MAX_ROWS], os.path.join(SITE_DATA, "trades.csv"))
+
     with open(os.path.join(SITE_DATA, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, separators=(",", ":"))
     if stats:
@@ -293,24 +304,26 @@ def write_data_outputs(rows: list[dict], summary: dict, stats: dict | None):
 
     # Remove stale month files, then rewrite current months.
     mdir = os.path.join(SITE_DATA, "months")
-    for fn in os.listdir(mdir):
-        if fn.endswith(".json"):
-            os.remove(os.path.join(mdir, fn))
+    cdir = os.path.join(SITE_DATA, "csv")
+    for d in (mdir, cdir):
+        for fn in os.listdir(d):
+            if fn.endswith((".json", ".csv")):
+                os.remove(os.path.join(d, fn))
 
     cutoff = (datetime.now(timezone.utc) - timedelta(days=RECENT_DAYS)).strftime("%Y-%m-%d")
-    recent = [r for r in rows if r.get("fd", "") >= cutoff]
+    recent = [r for r in rows_sorted if r.get("fd", "") >= cutoff][:RECENT_MAX_ROWS]
     with open(os.path.join(SITE_DATA, "recent.json"), "w", encoding="utf-8") as f:
         json.dump(recent, f, ensure_ascii=False, separators=(",", ":"))
 
     by_month: dict[str, list[dict]] = defaultdict(list)
-    for r in rows:
+    for r in rows_sorted:
         m = (r.get("fd") or "")[:7]
         if m:
             by_month[m].append(r)
     for m, rs in by_month.items():
-        rs.sort(key=lambda r: (r["fd"], r["td"]), reverse=True)
         with open(os.path.join(mdir, f"{m}.json"), "w", encoding="utf-8") as f:
             json.dump(rs, f, ensure_ascii=False, separators=(",", ":"))
+        write_csv(rs, os.path.join(cdir, f"{m}.csv"))
     return len(recent), len(by_month)
 
 
@@ -538,7 +551,8 @@ function codePill(code, text) {
 }
 function companyCell(r) {
   const tk = r.tk ? `<span class="badge">${esc(r.tk)}</span>` : "";
-  return `<td><span class="ticker">${esc(r.co)}</span>${tk}<div class="sub">${esc(r.tk ? "" : "no ticker filed")}</div></td>`;
+  const sub = r.tk ? "" : '<div class="sub">no ticker filed</div>';
+  return `<td><span class="ticker">${esc(r.co)}</span>${tk}${sub}</td>`;
 }
 function tradeRow(r) {
   const link = r.acc ? `<a href="${`https://www.sec.gov/Archives/edgar/data/${parseInt(r.acc.slice(0, 10))}/${r.acc.replace(/-/g, "")}-index.htm`}" target="_blank" rel="noopener" title="View filing on SEC EDGAR">↗</a>` : "";
@@ -645,10 +659,19 @@ function setLastUpdated() {
 }
 
 // ---------------------------------------------------------------- pages ----
+function emptyBanner() {
+  return `<div class="card" style="margin-bottom:16px;border-left:4px solid var(--warn)">
+    <b>Awaiting first automated collection.</b>
+    <div class="sub" style="margin-top:4px">The GitHub Actions pipeline pulls every Form 4 / Form 5 filing from
+    SEC EDGAR nightly at 04:00 UTC and publishes it here automatically. No manual input is needed.</div></div>`;
+}
+
 async function initIndex() {
   const [sum, recent] = await Promise.all([loadJSON("data/summary.json"), loadJSON("data/recent.json")]);
-  $(".hero .range").textContent =
-    `Coverage ${sum.range.from} → ${sum.range.to} · ${sum.counts.trades.toLocaleString()} trades · auto-updated`;
+  if (!sum.counts.trades) $("main").insertAdjacentHTML("afterbegin", emptyBanner());
+  $(".hero .range").textContent = sum.counts.trades
+    ? `Coverage ${sum.range.from} → ${sum.range.to} · ${sum.counts.trades.toLocaleString()} trades · auto-updated daily`
+    : `Dataset initializing — first nightly collection pending`;
   const count = n => n.toLocaleString("en-US");
   const cards = [
     ["Insider trades", count(sum.counts.trades), "across " + count(sum.counts.filings) + " filings", ""],
@@ -666,7 +689,7 @@ async function initIndex() {
     <th>Filed</th><th>Company</th><th>Insider</th><th>Code</th><th class="num">Value</th>
   </tr></thead><tbody>` + latest.map(r =>
     `<tr><td class="num">${r.fd}<div class="sub">txn ${fmtDate(r.td)}</div></td>
-     <td>${companyCell(r)}</td>
+     ${companyCell(r)}
      <td>${esc(r.in)}<div class="sub">${esc(r.title || r.rel)}</div></td>
      <td>${codePill(r.code, r.ct)}</td>
      <td class="num"><b>${r.val ? fmtMoney(r.val) : "—"}</b></td></tr>`).join("") +
@@ -707,6 +730,7 @@ async function initIndex() {
 
 async function initTrades() {
   const sum = await loadJSON("data/summary.json");
+  if (!sum.counts.trades) $("main").insertAdjacentHTML("afterbegin", emptyBanner());
   const params = new URLSearchParams(location.search);
   const presetTk = params.get("tk") || "";
   const presetMonth = params.get("m") || "recent";
@@ -718,14 +742,13 @@ async function initTrades() {
     <option value="exercise">Exercises</option><option value="grant">Grants</option>
     <option value="withholding">Tax withholding</option><option value="gift">Gifts</option>
     <option value="other">Other</option>`;
-  $("#monthSel").innerHTML = `<option value="recent">Last 90 days</option>` +
+  $("#monthSel").innerHTML = `<option value="recent">Last 14 days</option>` +
     sum.months.map(m => `<option value="${esc(m)}">${m}</option>`).join("");
   if (presetMonth && (presetMonth === "recent" || sum.months.includes(presetMonth)))
     $("#monthSel").value = presetMonth;
 
-  let api = null;
   const tableEl = $("#tradesTable");
-  api = makeTable(tableEl, [
+  const COLS = [
     { key: "fd", label: "Filed", cls: "num" },
     { key: "td", label: "Txn", cls: "num" },
     { key: "co", label: "Company" },
@@ -737,7 +760,8 @@ async function initTrades() {
     { key: "val", label: "Value", cls: "num" },
     { key: "af", label: "After", cls: "num" },
     { key: "di", label: "D/I", cls: "" },
-  ], [], { per: 25, sortKey: "fd" });
+  ];
+  let api = null; // rebuilt on every data (re)load — see load()
 
   function currentFilters() {
     const q = $("#q").value.trim().toLowerCase();
@@ -751,20 +775,29 @@ async function initTrades() {
   }
   async function load(month) {
     tableEl.innerHTML = '<div class="empty"><span class="spinner"></span>Loading trades…</div>';
+    const csvBtn = $("#csvBtn");
+    if (csvBtn) {
+      csvBtn.href = month === "recent" ? "data/trades.csv" : "data/csv/" + month + ".csv";
+      csvBtn.textContent = month === "recent" ? "⬇ Download CSV (recent)" : "⬇ Download CSV (" + month + ")";
+    }
     try {
       const rows = month === "recent"
         ? await loadJSON("data/recent.json")
         : await loadJSON("data/months/" + month + ".json");
-      api.setRows(rows);
+      // Rebuild the table: the spinner above replaced tableEl's contents,
+      // so the previous table DOM (if any) is gone.
+      api = makeTable(tableEl, COLS, rows, { per: 25, sortKey: "fd" });
       api.setFilter(currentFilters());
       if (presetTk) $("#q").placeholder = "Search within " + presetTk + " (clear box to widen)";
     } catch (e) {
+      api = null;
       tableEl.innerHTML = '<div class="empty">Could not load data: ' + esc(String(e)) + "</div>";
     }
   }
   ["q", "codeSel", "sideSel", "formSel", "derChk"].forEach(id => {
-    $("#" + id).addEventListener("input", () => api.setFilter(currentFilters()));
-    $("#" + id).addEventListener("change", () => api.setFilter(currentFilters()));
+    const refresh = () => { if (api) api.setFilter(currentFilters()); };
+    $("#" + id).addEventListener("input", refresh);
+    $("#" + id).addEventListener("change", refresh);
   });
   $("#monthSel").addEventListener("change", () => load($("#monthSel").value));
   load(presetMonth);
@@ -964,9 +997,10 @@ TRADES_BODY = """
   <label class="sub" style="display:flex;align-items:center;gap:6px;cursor:pointer">
     <input type="checkbox" id="derChk" style="width:auto"> derivatives only</label>
   <span class="spacer"></span>
-  <a class="btn ghost" href="data/trades.csv" download>⬇ Download full CSV</a>
+  <a class="btn ghost" id="csvBtn" href="data/trades.csv" download>⬇ Download CSV</a>
 </div>
 <div id="tradesTable"></div>
+<p class="count-note">Pick a month in the selector to browse (and download) any part of the full history; every month since collection began is preserved.</p>
 """
 
 COMPANIES_BODY = """
@@ -1102,17 +1136,13 @@ ABOUT_BODY = """
 
 
 def build():
-    dataset_gz = os.path.join(DATA_IN, "trades.json.gz")
-    dataset_path = os.path.join(DATA_IN, "trades.json")
+    sys.path.insert(0, HERE)
+    from collect import load_dataset  # sharded trades-YYYY.json.gz reader
     stats_path = os.path.join(DATA_IN, "stats.json")
-    if os.path.exists(dataset_gz):
-        with gzip.open(dataset_gz, "rt", encoding="utf-8") as f:
-            rows = json.load(f)
-    elif os.path.exists(dataset_path):
-        with open(dataset_path, "r", encoding="utf-8") as f:
-            rows = json.load(f)
-    else:
-        print(f"ERROR: no dataset at {dataset_gz} — run collector/collect.py first.", file=sys.stderr)
+    rows = load_dataset(DATA_IN)
+    if not rows and not os.environ.get("CEOTRADES_ALLOW_EMPTY"):
+        print(f"ERROR: no dataset in {DATA_IN} — run collector/collect.py first.",
+              file=sys.stderr)
         sys.exit(1)
     stats = None
     if os.path.exists(stats_path):

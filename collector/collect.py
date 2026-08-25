@@ -521,6 +521,67 @@ def merge_dataset(existing: list[dict], new_rows: list[dict]) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Dataset persistence (sharded by filing month, gzip-compressed)
+#
+# Month sharding keeps every committed file small forever AND minimizes git
+# churn: a nightly run only rewrites the shards of the months it touched.
+# ---------------------------------------------------------------------------
+
+SHARD_RE = re.compile(r"^trades-(\d{4}-\d{2})\.json\.gz$")
+
+
+def load_dataset(data_dir: str) -> list[dict]:
+    rows: list[dict] = []
+    for fn in sorted(os.listdir(data_dir)):
+        if SHARD_RE.match(fn):
+            try:
+                with gzip.open(os.path.join(data_dir, fn), "rt", encoding="utf-8") as f:
+                    rows.extend(json.load(f))
+            except (json.JSONDecodeError, OSError) as e:
+                log(f"! could not load shard {fn} ({e})")
+    # Legacy single-file datasets (pre-sharding) are absorbed once.
+    for legacy, opener in (("trades.json.gz", lambda p: gzip.open(p, "rt", encoding="utf-8")),
+                           ("trades.json", lambda p: open(p, "r", encoding="utf-8"))):
+        path = os.path.join(data_dir, legacy)
+        if not rows and os.path.exists(path):
+            try:
+                with opener(path) as f:
+                    rows = json.load(f)
+                log(f"Loaded legacy dataset {legacy}: {len(rows)} trades")
+            except (json.JSONDecodeError, OSError) as e:
+                log(f"! could not load legacy dataset ({e})")
+    return rows
+
+
+def save_dataset(data_dir: str, rows: list[dict]):
+    shards: dict[str, list[dict]] = {}
+    for r in rows:
+        month = (r.get("fd") or "0000-00")[:7]
+        shards.setdefault(month, []).append(r)
+    for month, rs in shards.items():
+        # Deterministic order -> byte-identical gzip when content unchanged
+        # (mtime=0), so untouched months never show up as git diffs.
+        rs.sort(key=lambda r: (r["fd"], r["td"] or "", r["acc"], r.get("sec", ""),
+                               str(r.get("sh"))))
+        path = os.path.join(data_dir, f"trades-{month}.json.gz")
+        buf = io.BytesIO()
+        with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=9, mtime=0) as gz:
+            gz.write(json.dumps(rs, ensure_ascii=False,
+                                separators=(",", ":")).encode("utf-8"))
+        with open(path, "wb") as f:
+            f.write(buf.getvalue())
+    # Remove shards for months that no longer have rows, and legacy files.
+    for fn in os.listdir(data_dir):
+        m = SHARD_RE.match(fn)
+        if m and m.group(1) not in shards:
+            os.remove(os.path.join(data_dir, fn))
+    for legacy in ("trades.json.gz", "trades.json"):
+        p = os.path.join(data_dir, legacy)
+        if os.path.exists(p):
+            os.remove(p)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -534,6 +595,12 @@ def main():
                     help="max requests per second (SEC limit: 10)")
     ap.add_argument("--force", action="store_true",
                     help="re-collect days already marked complete")
+    ap.add_argument("--budget-min", type=float,
+                    default=float(os.environ.get("CEOTRADES_BUDGET_MIN", "80")),
+                    help="stop collecting new days after this many minutes; "
+                         "remaining days are picked up by the next nightly run")
+    ap.add_argument("--no-backfill", action="store_true",
+                    help="disable automatic history backfill before the window")
     ap.add_argument("--data-dir", default=os.path.join(os.path.dirname(__file__), "data"))
     args = ap.parse_args()
 
@@ -541,21 +608,13 @@ def main():
     THROTTLE = Throttle(min(args.rate, 10.0))
 
     os.makedirs(args.data_dir, exist_ok=True)
-    dataset_path = os.path.join(args.data_dir, "trades.json.gz")
-    legacy_path = os.path.join(args.data_dir, "trades.json")
     stats_path = os.path.join(args.data_dir, "stats.json")
 
-    dataset: list[dict] = []
-    for path, opener in ((dataset_path, lambda p: gzip.open(p, "rt", encoding="utf-8")),
-                         (legacy_path, lambda p: open(p, "r", encoding="utf-8"))):
-        if os.path.exists(path):
-            try:
-                with opener(path) as f:
-                    dataset = json.load(f)
-                log(f"Loaded existing dataset: {len(dataset)} trades ({path})")
-                break
-            except (json.JSONDecodeError, OSError) as e:
-                log(f"! could not load dataset {path} ({e})")
+    # Dataset is sharded by filing year (trades-YYYY-MM.json.gz) so no single
+    # committed file can grow past Git/Pages limits as history accumulates.
+    dataset = load_dataset(args.data_dir)
+    if dataset:
+        log(f"Loaded existing dataset: {len(dataset)} trades")
 
     stats = {"runs": [], "last_updated": None}
     if os.path.exists(stats_path):
@@ -564,8 +623,7 @@ def main():
                 stats = json.load(f)
         except (json.JSONDecodeError, OSError):
             pass
-    done_days = {d for d, info in stats.get("days_collected", {}).items()
-                 if info.get("index")}
+    done_days = set(stats.get("days_collected", {}).keys())
 
     today_utc = datetime.now(timezone.utc).date()
     end = datetime.strptime(args.end, "%Y-%m-%d").date() if args.end \
@@ -576,15 +634,33 @@ def main():
         start = end - timedelta(days=args.days - 1)
     log(f"Window: {start.isoformat()} .. {end.isoformat()}")
 
+    # Build the day worklist: the requested window (newest first) plus an
+    # automatic backfill that walks further into the past on every run —
+    # so history grows nightly with zero manual input.
+    worklist: list[date] = []
+    day = end
+    while day >= start:
+        worklist.append(day)
+        day -= timedelta(days=1)
+    if not args.force and not args.no_backfill:
+        day = start - timedelta(days=1)
+        floor = date(2004, 1, 1)  # ownership XML era on EDGAR
+        while day >= floor:
+            worklist.append(day)
+            day -= timedelta(days=1)
+
+    t0 = time.monotonic()
+    budget_s = args.budget_min * 60.0
     new_rows = []
-    day = start
-    while day <= end:
+    for day in worklist:
         if day.isoformat() in done_days and not args.force:
-            log(f"-- {day.isoformat()} already collected, skipping")
-        else:
-            rows, _found = collect_day(day)
-            new_rows.extend(rows)
-        day += timedelta(days=1)
+            continue
+        if time.monotonic() - t0 > budget_s:
+            log(f"Time budget reached ({args.budget_min:.0f} min); "
+                f"stopping at {day.isoformat()} — next run continues backfill.")
+            break
+        rows, _found = collect_day(day)
+        new_rows.extend(rows)
 
     merged = merge_dataset(dataset, new_rows)
 
@@ -602,20 +678,19 @@ def main():
     stats["runs"] = stats["runs"][-60:]
     stats["last_updated"] = run_info["at"]
     stats.setdefault("days_collected", {})
+    recent_cut = (today_utc - timedelta(days=5)).isoformat()
     for d, info in STATS["days"].items():
-        # Mark a day done only when its index existed and was processed;
-        # 404 days (weekend/holiday/not-yet-published) stay retryable.
-        if info.get("index"):
+        # A processed index marks the day done. A 404 also marks the day done
+        # when it is safely in the past (weekend/holiday — the index will
+        # never appear); recent 404s stay retryable (index not yet built).
+        if info.get("index") or d < recent_cut:
             stats["days_collected"][d] = info
 
-    with gzip.open(dataset_path, "wt", encoding="utf-8", compresslevel=9) as f:
-        json.dump(merged, f, ensure_ascii=False, separators=(",", ":"))
-    if os.path.exists(legacy_path):
-        os.remove(legacy_path)  # superseded by the gzipped dataset
+    save_dataset(args.data_dir, merged)
     with open(stats_path, "w", encoding="utf-8") as f:
         json.dump(stats, f, ensure_ascii=False, indent=1)
 
-    log(f"Dataset: {len(merged)} trades -> {dataset_path}")
+    log(f"Dataset: {len(merged)} trades -> {args.data_dir}/trades-YYYY-MM.json.gz")
     log(f"Run added {len(new_rows)} trade rows; "
         f"{STATS['requests']} HTTP requests; {len(STATS['errors'])} errors.")
     if not merged:
