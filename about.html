@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About & Methodology · CEOTrades</title>
+<meta name="description" content="How CEOTrades automatically collects and verifies insider trade data.">
+<link rel="stylesheet" href="css/site.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+</head>
+<body data-page="about">
+<header class="top">
+  <div class="wrap nav">
+    <a class="brand" href="index.html"><span class="brand-ico">📈</span>CEO<span>Trades</span></a>
+    <nav>
+    <a href="index.html" data-nav="index">Dashboard</a>
+    <a href="trades.html" data-nav="trades">Trades</a>
+    <a href="companies.html" data-nav="companies">Companies</a>
+    <a href="insiders.html" data-nav="insiders">Insiders</a>
+    <a href="analysis.html" data-nav="analysis">Analysis</a>
+    <a href="about.html" data-nav="about">About</a>
+</nav>
+  </div>
+</header>
+<main class="wrap">
+
+<section class="hero">
+  <h1>How CEOTrades works</h1>
+  <p>Fully automated collection, organization and analysis of insider trading disclosures. No manual data entry, ever.</p>
+</section>
+
+<div class="grid g2">
+  <div class="card doc">
+    <h3>1 · Data source</h3>
+    <p>All data comes from the <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">U.S. SEC EDGAR</a> system:
+    <ul class="clean">
+      <li><b>Form 4</b> — Statement of Changes in Beneficial Ownership, filed within 2 business days of any insider transaction.</li>
+      <li><b>Form 5</b> — annual statement that catches transactions not previously reported.</li>
+    </ul>
+    These are the official disclosure forms under Section 16 of the Securities Exchange Act of 1934 — every director,
+    executive officer and &gt;10% shareholder of a public company must file them.</p>
+    <h3>2 · Enumeration</h3>
+    <p>Each day the pipeline reads the SEC’s <b>daily master index</b>
+    (<code>sec.gov/Archives/edgar/daily-index/YYYY/MM/DD/master.json</code>) to list every Form 4/5 filed that day,
+    with the EDGAR <b>full-text search API</b> (<code>efts.sec.gov</code>) as an automatic fallback and cross-check.</p>
+    <h3>3 · Extraction</h3>
+    <p>Each filing’s structured XML is downloaded and parsed (issuer, insider, relationship, and every
+    non-derivative and derivative transaction: date, code, shares, price, shares after).</p>
+    <h3>4 · Storage & publishing</h3>
+    <p>Rows are merged into a growing dataset (amendments supersede originals) and this static site is regenerated
+    and committed by <b>GitHub Actions every night at 04:00 UTC</b> — after EDGAR’s nightly index build.
+    The site deploys automatically via GitHub Pages.</p>
+    <h3>Automation status</h3>
+    <div id="autostats" class="table-scroll"><div class="empty">stats unavailable</div></div>
+  </div>
+  <div class="card doc">
+    <h3>Data dictionary</h3>
+    <table>
+      <tr><th>Field</th><th>Meaning</th></tr>
+      <tr><td>fd</td><td>Filing date (EDGAR acceptance, YYYY-MM-DD)</td></tr>
+      <tr><td>td</td><td>Transaction date (when the trade happened)</td></tr>
+      <tr><td>code / ct</td><td>Transaction code and its official meaning</td></tr>
+      <tr><td>side</td><td>buy / sell / exercise / grant / withholding / gift / other</td></tr>
+      <tr><td>sh / px / val</td><td>Shares transacted, price per share, value = sh × px (when priced)</td></tr>
+      <tr><td>ad</td><td>A = acquired, D = disposed</td></tr>
+      <tr><td>af</td><td>Shares owned following the transaction</td></tr>
+      <tr><td>di</td><td>D = direct ownership, I = indirect</td></tr>
+      <tr><td>der</td><td>1 = derivative security (option, RSU, warrant, …)</td></tr>
+      <tr><td>under</td><td>Underlying security for derivatives</td></tr>
+      <tr><td>acc</td><td>SEC accession number (links to the filing on EDGAR)</td></tr>
+    </table>
+    <h3>Transaction codes</h3>
+    <table>
+      <tr><th>Code</th><th>Meaning (official)</th></tr>
+      <tr><td>P</td><td>Open market or private purchase</td></tr>
+      <tr><td>S</td><td>Open market or private sale</td></tr>
+      <tr><td>A</td><td>Grant, award, or other acquisition</td></tr>
+      <tr><td>M</td><td>Exercise or conversion of derivative security</td></tr>
+      <tr><td>F</td><td>Payment of exercise price / tax by delivering or withholding securities</td></tr>
+      <tr><td>G</td><td>Bona fide gift</td></tr>
+      <tr><td>C</td><td>Conversion of derivative security</td></tr>
+      <tr><td>D</td><td>Sale or disposition back to the issuer</td></tr>
+      <tr><td>J</td><td>Other (described in footnotes)</td></tr>
+      <tr><td>Others</td><td>V, I, E, H, O, X, L, W, Z, K, U — see CSV for each row</td></tr>
+    </table>
+    <h3>Caveats</h3>
+    <ul class="clean">
+      <li>“Net flow” = code P value minus code S value. Grants (A), exercises (M) and tax withholding (F) change holdings but are not open-market flow.</li>
+      <li>Many sales follow pre-arranged <b>10b5-1 plans</b>; the data shows the trade, footnotes on EDGAR explain the plan.</li>
+      <li>Some transactions are reported without a price (grants, gifts) — value is blank, not zero.</li>
+      <li>Amendments (4/A) supersede the original filing; the latest version is kept.</li>
+      <li>Filings for issuers with no U.S. ticker still appear (ticker shown as —).</li>
+    </ul>
+    <h3>Run it yourself</h3>
+    <p><code>python3 collector/collect.py --days 3</code> then <code>python3 collector/build_site.py</code>.
+    Standard library only. SEC fair-access policy: declared User-Agent, ≤10 req/s — this project self-throttles to 8/s.</p>
+  </div>
+</div>
+
+</main>
+<footer class="wrap foot">
+  <div class="foot-in">
+    <div><strong>CEOTrades</strong> — insider trade intelligence.</div>
+    <div class="foot-src">
+      Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
+      Form 4 / Form 5 filings · collected automatically by GitHub Actions ·
+      <span data-slot="last-updated">loading…</span>
+    </div>
+    <div class="foot-disc">Data is public SEC filing data. Not investment advice.</div>
+  </div>
+</footer>
+<script src="js/app.js"></script>
+</body>
+</html>

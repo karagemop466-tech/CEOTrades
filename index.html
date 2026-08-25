@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Insider Trade Dashboard · CEOTrades</title>
+<meta name="description" content="Dashboard of every insider trade filed with SEC EDGAR: buys, sells, grants and exercises at publicly traded companies.">
+<link rel="stylesheet" href="css/site.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+</head>
+<body data-page="index">
+<header class="top">
+  <div class="wrap nav">
+    <a class="brand" href="index.html"><span class="brand-ico">📈</span>CEO<span>Trades</span></a>
+    <nav>
+    <a href="index.html" data-nav="index">Dashboard</a>
+    <a href="trades.html" data-nav="trades">Trades</a>
+    <a href="companies.html" data-nav="companies">Companies</a>
+    <a href="insiders.html" data-nav="insiders">Insiders</a>
+    <a href="analysis.html" data-nav="analysis">Analysis</a>
+    <a href="about.html" data-nav="about">About</a>
+</nav>
+  </div>
+</header>
+<main class="wrap">
+
+<section class="hero">
+  <h1>Every insider trade, tracked.</h1>
+  <p>CEOTrades collects <strong>all</strong> Form&nbsp;4 and Form&nbsp;5 insider transaction reports filed with
+  SEC&nbsp;EDGAR for publicly traded companies — automatically, with no manual input.
+  Directors, officers and 10%+ owners must disclose every purchase, sale, grant and exercise within two business days.</p>
+  <span class="range" data-slot="range">loading…</span>
+</section>
+
+<div class="grid g6" id="stats"></div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Latest insider activity <small>· most recent filings</small></h3><div id="latest"></div></div>
+  <div class="card"><h3>Most active companies <small>· trades in dataset</small></h3><div id="topco"></div></div>
+</div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Net open-market flow by company <small>· buys minus sells, top 10 by |net|</small></h3>
+    <div id="netflow"></div></div>
+  <div class="card"><h3>Trades filed per day <small>· last 30 days</small></h3>
+    <div id="dailychart"></div><div id="dailyx"></div><div id="dailynote" class="count-note"></div></div>
+</div>
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card"><h3>Top net buyers <small>· open-market P − S</small></h3><div id="buyers"></div></div>
+  <div class="card"><h3>Top net sellers <small>· open-market P − S</small></h3><div id="sellers"></div></div>
+</div>
+
+</main>
+<footer class="wrap foot">
+  <div class="foot-in">
+    <div><strong>CEOTrades</strong> — insider trade intelligence.</div>
+    <div class="foot-src">
+      Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
+      Form 4 / Form 5 filings · collected automatically by GitHub Actions ·
+      <span data-slot="last-updated">loading…</span>
+    </div>
+    <div class="foot-disc">Data is public SEC filing data. Not investment advice.</div>
+  </div>
+</footer>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>All Trades · CEOTrades</title>
+<meta name="description" content="Searchable, filterable table of every insider transaction row.">
+<link rel="stylesheet" href="css/site.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+</head>
+<body data-page="trades">
+<header class="top">
+  <div class="wrap nav">
+    <a class="brand" href="index.html"><span class="brand-ico">📈</span>CEO<span>Trades</span></a>
+    <nav>
+    <a href="index.html" data-nav="index">Dashboard</a>
+    <a href="trades.html" data-nav="trades">Trades</a>
+    <a href="companies.html" data-nav="companies">Companies</a>
+    <a href="insiders.html" data-nav="insiders">Insiders</a>
+    <a href="analysis.html" data-nav="analysis">Analysis</a>
+    <a href="about.html" data-nav="about">About</a>
+</nav>
+  </div>
+</header>
+<main class="wrap">
+
+<section class="hero">
+  <h1>All insider trades</h1>
+  <p>Every transaction row from every collected Form 4 / Form 5 filing. Search, filter and sort freely — the full CSV is one click away.</p>
+</section>
+
+<div class="toolbar">
+  <input type="search" id="q" placeholder="Search insider, company, ticker, title…">
+  <select id="monthSel" title="Data window"></select>
+  <select id="codeSel" title="Transaction code"></select>
+  <select id="sideSel" title="Side"></select>
+  <select id="formSel" title="Form">
+    <option value="">Form 4 + 5</option><option value="4">Form 4</option><option value="5">Form 5</option>
+  </select>
+  <label class="sub" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+    <input type="checkbox" id="derChk" style="width:auto"> derivatives only</label>
+  <span class="spacer"></span>
+  <a class="btn ghost" id="csvBtn" href="data/trades.csv" download>⬇ Download CSV</a>
+</div>
+<div id="tradesTable"></div>
+<p class="count-note">Pick a month in the selector to browse (and download) any part of the full history; every month since collection began is preserved.</p>
+
+</main>
+<footer class="wrap foot">
+  <div class="foot-in">
+    <div><strong>CEOTrades</strong> — insider trade intelligence.</div>
+    <div class="foot-src">
+      Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
+      Form 4 / Form 5 filings · collected automatically by GitHub Actions ·
+      <span data-slot="last-updated">loading…</span>
+    </div>
+    <div class="foot-disc">Data is public SEC filing data. Not investment advice.</div>
+  </div>
+</footer>
+<script src="js/app.js"></script>
+</body>
+</html>
