@@ -1,0 +1,63 @@
+name: Collect insider trades
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Calendar days back to collect (ending yesterday)"
+        required: false
+        default: "3"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ceotrades-collect
+  cancel-in-progress: false
+
+jobs:
+  collect-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Parser self-test (offline)
+        run: python3 collector/selftest.py
+
+      - name: Collect Form 4/5 filings
+        env:
+          DAYS: ${{ github.event.inputs.days || '3' }}
+        run: python3 collector/collect.py --days "$DAYS" --rate 8
+
+      - name: Build static site
+        run: python3 collector/build_site.py
+
+      - name: Sanity-check outputs
+        run: |
+          python3 - <<'PY'
+          import json, os
+          s = json.load(open("data/summary.json"))
+          n = s["counts"]["trades"]
+          assert n > 0, "summary has 0 trades"
+          print(f"dataset OK: {n} trades, {s['counts']['companies']} companies")
+          assert os.path.getsize("data/trades.csv") > 1000, "csv suspiciously small"
+          PY
+
+      - name: Commit and push
+        run: |
+          git config user.name "ceotrades-bot"
+          git config user.email "41898282+ceotrades-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore(data): insider trade update $(date -u +%Y-%m-%d)"
+            git push
+          fi
