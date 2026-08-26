@@ -100,6 +100,7 @@ def collect(data_dir: str):
               "with_ticker": 0, "with_price": 0, "deriv": 0}
     accs: set[str] = set()
     recent: list[dict] = []
+    latest: list[dict] = []
     signals: dict[tuple, dict] = {}
 
     cutoff = (datetime.now(timezone.utc) - timedelta(days=RECENT_DAYS)).strftime("%Y-%m-%d")
@@ -222,8 +223,15 @@ def collect(data_dir: str):
                     p["last"] = fd
 
         # ---- tape ----
+        # Rows inside the recent window, plus an always-populated fallback so
+        # the tape is never empty for a dataset whose latest filing is old.
         if fd >= cutoff:
             recent.append(compact(r))
+        else:
+            latest.append(compact(r))
+            if len(latest) > RECENT_CAP * 3:
+                latest.sort(key=lambda x: x.get("fd") or "", reverse=True)
+                del latest[RECENT_CAP:]
 
         # ---- paper-trade signal (code P, non-derivative, priced, has ticker) ----
         if is_buy and not r.get("der") and tk:
@@ -252,6 +260,8 @@ def collect(data_dir: str):
         c["recent"].sort(key=lambda x: x.get("fd") or "", reverse=True)
         del c["recent"][COMPANY_CAP:]
 
+    if not recent:
+        recent = latest
     recent.sort(key=lambda x: (x.get("fd") or "", x.get("td") or ""), reverse=True)
     del recent[RECENT_CAP:]
 
@@ -985,6 +995,16 @@ def main() -> int:
     nco, nb = write_companies(agg, args.out)
     nins = write_insiders(agg, args.out)
     jdump(agg["recent"], os.path.join(args.out, "recent.json"))
+
+    # data/trades.csv — plain-text export of the recent tape. Kept because the
+    # published workflow sanity-checks this exact path, and it is the most
+    # convenient single-file download for spreadsheet users.
+    with open(os.path.join(args.out, "trades.csv"), "w", newline="",
+              encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(COMPACT_KEYS), extrasaction="ignore")
+        w.writeheader()
+        for r in agg["recent"]:
+            w.writerow({k: r.get(k) for k in COMPACT_KEYS})
     ycounts = write_year_csvs(args.data, args.out)
     summary = write_summary(agg, args.out, paper["counts"])
 
