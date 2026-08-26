@@ -1,63 +1,101 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>All Trades · CEOTrades</title>
-<meta name="description" content="Searchable, filterable table of every insider transaction row.">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trades · CEOTrades</title>
+<meta name="description" content="Searchable tape of SEC Form 3/4/5 insider transactions with full history downloads.">
 <link rel="stylesheet" href="css/site.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 </head>
-<body data-page="trades">
-<header class="top">
-  <div class="wrap nav">
-    <a class="brand" href="index.html"><span class="brand-ico">📈</span>CEO<span>Trades</span></a>
-    <nav>
-    <a href="index.html" data-nav="index">Dashboard</a>
-    <a href="paper.html" data-nav="paper">Paper book</a>
-    <a href="trades.html" data-nav="trades">Trades</a>
-    <a href="companies.html" data-nav="companies">Companies</a>
-    <a href="insiders.html" data-nav="insiders">Insiders</a>
-    <a href="analysis.html" data-nav="analysis">Findings</a>
-    <a href="about.html" data-nav="about">About</a>
-</nav>
-  </div>
-</header>
+<body>
+<header class="top"><div class="wrap nav">
+  <a class="brand" href="index.html">📈 CEO<span>Trades</span></a>
+  <nav>
+        <a href="index.html">Dashboard</a>
+        <a href="paper.html">Paper book</a>
+        <a href="trades.html" class="active">Trades</a>
+        <a href="companies.html">Companies</a>
+        <a href="insiders.html">Insiders</a>
+        <a href="analysis.html">Findings</a>
+        <a href="about.html">About</a>
+  </nav>
+</div></header>
 <main class="wrap">
-
-<section class="hero">
-  <h1>All insider trades</h1>
-  <p>Every transaction row from every collected Form 4 / Form 5 filing. Search, filter and sort freely — the full CSV is one click away.</p>
-</section>
-
-<div class="toolbar">
-  <input type="search" id="q" placeholder="Search insider, company, ticker, title…">
-  <select id="monthSel" title="Data window"></select>
-  <select id="codeSel" title="Transaction code"></select>
-  <select id="sideSel" title="Side"></select>
-  <select id="formSel" title="Form">
-    <option value="">Form 4 + 5</option><option value="4">Form 4</option><option value="5">Form 5</option>
-  </select>
-  <label class="sub" style="display:flex;align-items:center;gap:6px;cursor:pointer">
-    <input type="checkbox" id="derChk" style="width:auto"> derivatives only</label>
-  <span class="spacer"></span>
-  <a class="btn ghost" id="csvBtn" href="data/trades.csv" download>⬇ Download CSV</a>
+<div class="page-head">
+  <h1>All trades</h1>
+  <p>Recent Form 3/4/5 transactions, searchable and sortable. Complete history for every year
+     is downloadable below as gzipped CSV — one file per year, straight from the SEC datasets.</p>
 </div>
-<div id="tradesTable"></div>
-<p class="count-note">Pick a month in the selector to browse (and download) any part of the full history; every month since collection began is preserved.</p>
 
+<div class="controls">
+  <input type="search" id="q" placeholder="Search ticker, company or insider…">
+  <select id="code"><option value="">All codes</option></select>
+  <select id="side"><option value="">All types</option><option value="buy">Purchases</option><option value="sell">Sales</option><option value="grant">Grants</option><option value="exercise">Exercises</option><option value="gift">Gifts</option></select>
+  <button class="btn" id="csv">Export view (CSV)</button>
+</div>
+<div class="card tight" id="tbl"></div>
+
+<h2 class="sec">Full history downloads <small>gzipped CSV, one per filing year</small></h2>
+<div class="card" id="dl"></div>
 </main>
-<footer class="wrap foot">
-  <div class="foot-in">
-    <div><strong>CEOTrades</strong> — insider paper trading. $10k per open-market buy, next session’s open.</div>
-    <div class="foot-src">
-      Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
-      Form 4 / Form 5 filings · collected automatically by GitHub Actions ·
-      <span data-slot="last-updated">loading…</span>
-    </div>
-    <div class="foot-disc">Data is public SEC filing data. Not investment advice.</div>
-  </div>
-</footer>
+<footer><div class="wrap">
+  <div>Source: <a href="https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets">SEC Forms 3/4/5</a>.
+    Prices: Yahoo Finance / Stooq. Educational research only — not investment advice.</div>
+  <div><a href="https://github.com/karagemop466-tech/CEOTrades">Source on GitHub</a></div>
+</div></footer>
 <script src="js/app.js"></script>
+<script>
+Promise.all([CT.load('data/recent.json').catch(function(){return [];}), CT.load('data/summary.json')])
+.then(function (r) {
+  var rows = r[0] || [], s = r[1];
+  var sel = document.getElementById('code');
+  (s.by_code || []).forEach(function (c) {
+    var o = document.createElement('option');
+    o.value = c.code; o.textContent = c.code + ' — ' + CT.fmtInt(c.n);
+    sel.appendChild(o);
+  });
+  var dl = (s.yearly || []).map(function (y) {
+    return '<a class="btn" style="margin:0 8px 8px 0" href="data/csv/trades-' + CT.esc(y.y) +
+      '.csv.gz" download>' + CT.esc(y.y) + ' · ' + CT.fmtInt(y.n) + '</a>';
+  }).join('');
+  document.getElementById('dl').innerHTML = dl ||
+    '<div class="empty">No history published yet.</div>';
+
+  var cols = [
+    { key: 'fd', label: 'Filed', cls: 'nowrap' },
+    { key: 'td', label: 'Traded', cls: 'nowrap' },
+    { key: 'tk', label: 'Ticker', render: function (r) { return r.tk ? '<a class="ticker" href="companies.html?cik=' + CT.esc(r.icik || '') + '">' + CT.esc(r.tk) + '</a>' : '<span class="sub">—</span>'; } },
+    { key: 'co', label: 'Company', render: function (r) { return '<div class="trunc" title="' + CT.esc(r.co) + '">' + CT.esc(CT.titleCase(r.co)) + '</div>'; } },
+    { key: 'in', label: 'Insider', render: function (r) { return '<div class="trunc" title="' + CT.esc(r['in']) + '">' + CT.esc(CT.titleCase(r['in'])) + '</div><div class="sub">' + CT.esc(r.title || r.rel || '') + '</div>'; } },
+    { key: 'code', label: 'Code', render: function (r) { return CT.sideBadge(r.code, r.side) + ' <span class="sub">' + CT.esc((r.ct || '').slice(0, 26)) + '</span>'; } },
+    { key: 'sec', label: 'Security', render: function (r) { return '<div class="trunc" title="' + CT.esc(r.sec) + '">' + CT.esc(r.sec || '') + '</div>'; } },
+    { key: 'sh', label: 'Shares', num: true, render: function (r) { return CT.fmtInt(r.sh); } },
+    { key: 'px', label: 'Price', num: true, render: function (r) { return CT.fmtPx(r.px); } },
+    { key: 'val', label: 'Value', num: true, render: function (r) { return CT.fmtMoney(r.val); } },
+    { key: 'af', label: 'Held after', num: true, render: function (r) { return CT.fmtInt(r.af); } },
+    { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
+  ];
+  var t = new CT.Table({ mount: '#tbl', rows: rows, cols: cols, pageSize: 50, sortKey: 'fd', sortDir: -1,
+    empty: 'No recent rows. Use the yearly downloads for full history.' });
+
+  function apply() {
+    var q = document.getElementById('q').value.trim().toLowerCase();
+    var code = document.getElementById('code').value, side = document.getElementById('side').value;
+    t.filter(function (r) {
+      if (code && r.code !== code) return false;
+      if (side && r.side !== side) return false;
+      if (q && ((r.tk || '') + ' ' + (r.co || '') + ' ' + (r['in'] || '')).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+  document.getElementById('q').addEventListener('input', CT.debounce(apply, 200));
+  document.getElementById('code').addEventListener('change', apply);
+  document.getElementById('side').addEventListener('change', apply);
+  document.getElementById('csv').addEventListener('click', function () {
+    CT.download('ceotrades-trades-view.csv', CT.toCSV(t.view, cols));
+  });
+}).catch(function (e) { CT.fail(document.getElementById('tbl'), e); });
+</script>
 </body>
 </html>

@@ -1,90 +1,115 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Findings · CEOTrades</title>
-<meta name="description" content="Paper-book ROI findings plus insider flow analytics: code mix, net buyers and sellers.">
+<meta name="description" content="Forward-test results: ROI by role, purchase size, holding period and year.">
 <link rel="stylesheet" href="css/site.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 </head>
-<body data-page="analysis">
-<header class="top">
-  <div class="wrap nav">
-    <a class="brand" href="index.html"><span class="brand-ico">📈</span>CEO<span>Trades</span></a>
-    <nav>
-    <a href="index.html" data-nav="index">Dashboard</a>
-    <a href="paper.html" data-nav="paper">Paper book</a>
-    <a href="trades.html" data-nav="trades">Trades</a>
-    <a href="companies.html" data-nav="companies">Companies</a>
-    <a href="insiders.html" data-nav="insiders">Insiders</a>
-    <a href="analysis.html" data-nav="analysis">Findings</a>
-    <a href="about.html" data-nav="about">About</a>
-</nav>
-  </div>
-</header>
+<body>
+<header class="top"><div class="wrap nav">
+  <a class="brand" href="index.html">📈 CEO<span>Trades</span></a>
+  <nav>
+        <a href="index.html">Dashboard</a>
+        <a href="paper.html">Paper book</a>
+        <a href="trades.html">Trades</a>
+        <a href="companies.html">Companies</a>
+        <a href="insiders.html">Insiders</a>
+        <a href="analysis.html" class="active">Findings</a>
+        <a href="about.html">About</a>
+  </nav>
+</div></header>
 <main class="wrap">
-
-<section class="hero">
+<div class="page-head">
   <h1>Findings</h1>
-  <p>Paper-book results first (real prices, no lookahead), then the raw Form&nbsp;4 tape: code mix, net flow and who is buying.</p>
-</section>
-
-<div class="grid g6" id="paperstats"></div>
-<div class="grid g2" style="margin-top:16px">
-  <div class="card"><h3>Paper-book findings</h3><div id="paperfindings"></div></div>
-  <div class="card"><h3>Mean ROI by role</h3>
-    <div id="byrole"></div>
-    <h3 style="margin-top:16px">By insider purchase size</h3>
-    <div id="bysize"></div></div>
+  <p>What the forward test says so far. Every figure is computed from the paper book —
+     real entry prices at the first open after each filing — not from the insiders' own fills.</p>
 </div>
-<div class="grid g2" style="margin-top:16px">
-  <div class="card"><h3>Best paper trades <small>· by ROI</small></h3><div class="table-scroll">
-    <table><thead><tr><th>Ticker</th><th>Insider</th><th class="num">ROI</th><th class="num">P&amp;L</th></tr></thead><tbody id="best"></tbody></table></div></div>
-  <div class="card"><h3>Worst paper trades <small>· by ROI</small></h3><div class="table-scroll">
-    <table><thead><tr><th>Ticker</th><th>Insider</th><th class="num">ROI</th><th class="num">P&amp;L</th></tr></thead><tbody id="worst"></tbody></table></div></div>
-</div>
+<div class="card"><h3>Headline findings</h3><div id="findings"></div></div>
 
-<h2 class="sec">Form 4 / Form 5 tape</h2>
+<h2 class="sec">Return by holding period <small>median return measured from our entry price</small></h2>
+<div class="card tight"><div id="hz"></div></div>
+
+<h2 class="sec">Return by insider role</h2>
+<div class="card tight"><div id="role"></div></div>
+
+<h2 class="sec">Return by purchase size <small>how much the insider spent</small></h2>
+<div class="card tight"><div id="size"></div></div>
+
+<h2 class="sec">Return by filing year</h2>
+<div class="card tight"><div id="year"></div></div>
+
+<h2 class="sec">Best and worst positions</h2>
 <div class="grid g2">
-  <div class="card"><h3>Transaction value by type</h3>
-    <div class="donut-wrap"><div class="donut" id="donut"><div class="hole" id="donuthole"></div></div>
-    <div class="legend" id="legend"></div></div></div>
-  <div class="card"><h3>By transaction code</h3><div id="codeTable" class="table-scroll"></div></div>
+  <div class="card tight"><h3>Top 25 winners</h3><div id="best"></div></div>
+  <div class="card tight"><h3>Bottom 25 losers</h3><div id="worst"></div></div>
 </div>
 
-<div class="grid g2" style="margin-top:16px">
-  <div class="card"><h3>Daily buys vs sells <small>· last 60 days, $</small></h3>
-    <div id="netchart"></div><div id="netx"></div></div>
-  <div class="card"><h3>Filing mix</h3><div id="formmix" class="doc"></div>
-    <h3 style="margin-top:16px">Reporter relationship</h3><div id="relBars"></div></div>
-</div>
-
-<div class="grid g2" style="margin-top:16px">
-  <div class="card"><h3>Top 10 net buyers <small>· P − S $</small></h3><div class="table-scroll">
-    <table><thead><tr><th>Ticker</th><th>Company</th><th class="num">Buys $</th><th class="num">Sells $</th><th class="num">Net $</th></tr></thead><tbody id="ntb"></tbody></table></div></div>
-  <div class="card"><h3>Top 10 net sellers <small>· P − S $</small></h3><div class="table-scroll">
-    <table><thead><tr><th>Ticker</th><th>Company</th><th class="num">Buys $</th><th class="num">Sells $</th><th class="num">Net $</th></tr></thead><tbody id="nts"></tbody></table></div></div>
-</div>
-
-<div class="grid g2" style="margin-top:16px">
-  <div class="card"><h3>Biggest open-market buyers <small>· insiders, code P</small></h3><div class="table-scroll">
-    <table><thead><tr><th>Insider</th><th>Companies</th><th class="num">Purchases $</th></tr></thead><tbody id="ntp"></tbody></table></div></div>
-  <div class="card"><h3>Most traded security types</h3><div id="secBars"></div></div>
-</div>
-
+<h2 class="sec">Transaction code mix <small>the whole dataset, not just paper trades</small></h2>
+<div class="card tight"><div id="codes"></div></div>
 </main>
-<footer class="wrap foot">
-  <div class="foot-in">
-    <div><strong>CEOTrades</strong> — insider paper trading. $10k per open-market buy, next session’s open.</div>
-    <div class="foot-src">
-      Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
-      Form 4 / Form 5 filings · collected automatically by GitHub Actions ·
-      <span data-slot="last-updated">loading…</span>
-    </div>
-    <div class="foot-disc">Data is public SEC filing data. Not investment advice.</div>
-  </div>
-</footer>
+<footer><div class="wrap">
+  <div>Source: <a href="https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets">SEC Forms 3/4/5</a>.
+    Prices: Yahoo Finance / Stooq. Educational research only — not investment advice.</div>
+  <div><a href="https://github.com/karagemop466-tech/CEOTrades">Source on GitHub</a></div>
+</div></footer>
 <script src="js/app.js"></script>
+<script>
+var LBL = { r1: '1 session', r5: '1 week (5)', r21: '1 month (21)', r63: '1 quarter (63)', r252: '1 year (252)' };
+function statCols(keyLabel, key) {
+  return [
+    { key: key, label: keyLabel },
+    { key: 'n', label: 'Positions', num: true, render: function (r) { return CT.fmtInt(r.n); } },
+    { key: 'median', label: 'Median ROI', num: true, render: function (r) { return '<strong class="' + CT.pctCls(r.median) + '">' + CT.fmtPct(r.median) + '</strong>'; } },
+    { key: 'mean', label: 'Mean ROI', num: true, render: function (r) { return '<span class="' + CT.pctCls(r.mean) + '">' + CT.fmtPct(r.mean) + '</span>'; } },
+    { key: 'win', label: 'Win rate', num: true, render: function (r) { return r.win === null ? '—' : (r.win * 100).toFixed(1) + '%'; } },
+    { key: 'p25', label: 'p25', num: true, render: function (r) { return CT.fmtPct(r.p25); } },
+    { key: 'p75', label: 'p75', num: true, render: function (r) { return CT.fmtPct(r.p75); } }
+  ];
+}
+function posCols() {
+  return [
+    { key: 'tk', label: 'Ticker', render: function (r) { return '<span class="ticker">' + CT.esc(r.tk) + '</span>'; } },
+    { key: 'insider', label: 'Insider', render: function (r) { return '<div class="trunc">' + CT.esc(CT.titleCase(r.insider)) + '</div>'; } },
+    { key: 'fd', label: 'Filed', cls: 'nowrap' },
+    { key: 'entry_px', label: 'Entry', num: true, render: function (r) { return CT.fmtPx(r.entry_px); } },
+    { key: 'last_px', label: 'Last', num: true, render: function (r) { return CT.fmtPx(r.last_px); } },
+    { key: 'roi', label: 'ROI', num: true, render: function (r) { return '<strong class="' + CT.pctCls(r.roi) + '">' + CT.fmtPct(r.roi) + '</strong>'; } }
+  ];
+}
+
+Promise.all([CT.load('data/paper/summary.json'), CT.load('data/summary.json')])
+.then(function (r) {
+  var p = r[0], s = r[1];
+  document.getElementById('findings').innerHTML = (p.findings || []).map(function (f, i) {
+    return '<div class="finding"><div class="n">' + (i + 1) + '</div><div>' + CT.esc(f) + '</div></div>';
+  }).join('') || '<div class="empty">No findings yet.</div>';
+
+  var hz = Object.keys(LBL).filter(function (k) { return p.horizons && p.horizons[k]; })
+    .map(function (k) { var o = Object.assign({}, p.horizons[k]); o.h = LBL[k]; return o; });
+  new CT.Table({ mount: '#hz', rows: hz, cols: statCols('Holding period', 'h'), pageSize: 10, sortKey: null });
+  new CT.Table({ mount: '#role', rows: p.by_role || [], cols: statCols('Role', 'role'), pageSize: 15, sortKey: 'n' });
+  new CT.Table({ mount: '#size', rows: p.by_size || [], cols: statCols('Insider spend', 'size'), pageSize: 15, sortKey: 'n' });
+  new CT.Table({ mount: '#year', rows: p.by_year || [], cols: statCols('Filing year', 'y'), pageSize: 30, sortKey: 'y', sortDir: 1 });
+  new CT.Table({ mount: '#best', rows: p.best || [], cols: posCols(), pageSize: 25, sortKey: 'roi', sortDir: -1 });
+  new CT.Table({ mount: '#worst', rows: p.worst || [], cols: posCols(), pageSize: 25, sortKey: 'roi', sortDir: 1 });
+
+  var total = (s.by_code || []).reduce(function (a, c) { return a + c.n; }, 0) || 1;
+  new CT.Table({
+    mount: '#codes', rows: s.by_code || [], pageSize: 25, sortKey: 'n', sortDir: -1,
+    cols: [
+      { key: 'code', label: 'Code', render: function (r) { return '<span class="b neutral">' + CT.esc(r.code) + '</span>'; } },
+      { key: 'n', label: 'Transactions', num: true, render: function (r) { return CT.fmtInt(r.n); } },
+      { key: 'v', label: 'Reported value', num: true, render: function (r) { return CT.fmtMoney(r.v); } },
+      { key: 'pct', label: 'Share', num: true, sort: false, render: function (r) {
+          var w = (r.n / total * 100);
+          return '<div class="bar" title="' + w.toFixed(2) + '%"><i style="width:' +
+            Math.max(2, w).toFixed(1) + '%;background:var(--acc)"></i></div>'; } }
+    ]
+  });
+}).catch(function (e) { CT.fail(document.getElementById('findings'), e); });
+</script>
 </body>
 </html>

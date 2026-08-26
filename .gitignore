@@ -1,4 +1,5 @@
 __pycache__/
 *.pyc
 .DS_Store
+# Price bars are a rebuildable cache, restored via actions/cache — not source.
 collector/data/prices/
