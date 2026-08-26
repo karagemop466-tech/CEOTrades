@@ -154,8 +154,22 @@ class Throttle:
 THROTTLE = Throttle(5.0)
 
 
+class TransientFetchError(RuntimeError):
+    """A retryable SEC/network failure.
+
+    This is deliberately distinct from a clean 404. A missing ZIP can be marked
+    unavailable, but a TLS reset, timeout, 429, or access block must leave the
+    quarter retryable so a temporary outage cannot poison backfill progress.
+    """
+
+
 def http_get(url: str, retries: int = 4, timeout: int = 300) -> bytes | None:
-    """GET honoring SEC fair-access. Returns bytes, or None on 403/404/exhaustion."""
+    """GET honoring SEC fair-access.
+
+    Returns bytes on success, None only for a definitive 404, and raises
+    TransientFetchError for retryable network/access failures.
+    """
+    last = "unknown error"
     for attempt in range(retries + 1):
         THROTTLE.wait()
         req = urllib.request.Request(url, headers={
@@ -170,15 +184,17 @@ def http_get(url: str, retries: int = 4, timeout: int = 300) -> bytes | None:
                     raw = gzip.decompress(raw)
                 return raw
         except urllib.error.HTTPError as e:
-            if e.code in (403, 404):
+            if e.code == 404:
                 return None
             last = f"HTTP {e.code}"
+            # 403/429 are often SEC fair-access throttling or edge blocks; do
+            # not mark a historical quarter unavailable because of them.
         except Exception as e:  # noqa: BLE001 - network variability
             last = str(e)
         if attempt < retries:
             time.sleep(2 ** attempt)
     log(f"   ! giving up on {url} ({last})")
-    return None
+    raise TransientFetchError(f"{url}: {last}")
 
 
 # ---------------------------------------------------------------------------
@@ -496,11 +512,27 @@ def quarters(start_year: int, end: date):
 
 
 def fetch_quarter(y: int, q: int) -> bytes | None:
+    """Fetch one SEC quarterly archive.
+
+    Returns None only when every known SEC host gives a clean 404. If at least
+    one host fails transiently and no archive is retrieved, raises
+    TransientFetchError so callers keep the quarter retryable.
+    """
     name = f"{y}q{q}_form345.zip"
+    transient: list[str] = []
     for host in ZIP_HOSTS:
-        raw = http_get(f"{host}/{name}")
+        url = f"{host}/{name}"
+        try:
+            raw = http_get(url)
+        except TransientFetchError as e:
+            transient.append(str(e))
+            continue
         if raw and raw[:2] == b"PK":
             return raw
+        if raw:
+            transient.append(f"{url}: response was not a ZIP archive")
+    if transient:
+        raise TransientFetchError("; ".join(transient))
     return None
 
 
@@ -531,7 +563,12 @@ def main() -> int:
     for y, q in qs:
         label = f"{y}Q{q}"
         log(f"== {label}")
-        raw = fetch_quarter(y, q)
+        try:
+            raw = fetch_quarter(y, q)
+        except TransientFetchError as e:
+            log(f"   ! transient SEC/network failure: {e}")
+            log("   ! stopping now; quarter remains retryable on the next run")
+            return 3
         if not raw:
             log("   ! archive unavailable (not yet published or withdrawn)")
             missing.append(label)

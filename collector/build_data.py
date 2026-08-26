@@ -938,6 +938,11 @@ def main() -> int:
                     help="use only cached prices (no network)")
     ap.add_argument("--max-tickers", type=int, default=0,
                     help="limit tickers priced this run (0 = no limit)")
+    ap.add_argument("--price-budget-min", type=float,
+                    default=float(os.environ.get("CEOTRADES_PRICE_MIN", "120")),
+                    help="minutes to spend fetching fresh market prices; after the "
+                         "budget, cached bars are used and uncached tickers are "
+                         "reported as no_price rather than fabricated")
     args = ap.parse_args()
 
     if not store.shard_files(args.data):
@@ -974,9 +979,13 @@ def main() -> int:
     log(f"  {len(tickers):,} unique tickers to price")
 
     asof = date.today().isoformat()
-    positions, priced, nosrc = [], 0, 0
+    price_deadline = time.monotonic() + max(0.0, args.price_budget_min) * 60.0
+    positions, priced, nosrc, budgeted = [], 0, 0, 0
     for i, tk in enumerate(tickers, 1):
-        bars, src = get_bars(tk, offline=args.offline)
+        use_offline = args.offline or time.monotonic() > price_deadline
+        if use_offline and not args.offline:
+            budgeted += 1
+        bars, src = get_bars(tk, offline=use_offline)
         if bars:
             priced += 1
         else:
@@ -986,8 +995,9 @@ def main() -> int:
             p["price_src"] = src
             positions.append(p)
         if i % 100 == 0 or i == len(tickers):
+            suffix = f", {budgeted} budget-offline" if budgeted else ""
             log(f"  priced {i}/{len(tickers)} tickers "
-                f"({priced} with bars, {nosrc} without)")
+                f"({priced} with bars, {nosrc} without{suffix})")
 
     log("Pass 3: writing site data …")
     os.makedirs(args.out, exist_ok=True)
