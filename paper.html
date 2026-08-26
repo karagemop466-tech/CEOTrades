@@ -1,80 +1,123 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Paper Book · CEOTrades</title>
-<meta name="description" content="Every simulated $10,000 fill following insider Form 4 purchases, with real entry prices, gap vs the insider, and live ROI.">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Paper book · CEOTrades</title>
+<meta name="description" content="Every simulated $10,000 insider-follow position with real entry prices, gap and ROI.">
 <link rel="stylesheet" href="css/site.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 </head>
-<body data-page="paper">
-<header class="top">
-  <div class="wrap nav">
-    <a class="brand" href="index.html"><span class="brand-ico">📈</span>CEO<span>Trades</span></a>
-    <nav>
-    <a href="index.html" data-nav="index">Dashboard</a>
-    <a href="paper.html" data-nav="paper">Paper book</a>
-    <a href="trades.html" data-nav="trades">Trades</a>
-    <a href="companies.html" data-nav="companies">Companies</a>
-    <a href="insiders.html" data-nav="insiders">Insiders</a>
-    <a href="analysis.html" data-nav="analysis">Findings</a>
-    <a href="about.html" data-nav="about">About</a>
-</nav>
-  </div>
-</header>
+<body>
+<header class="top"><div class="wrap nav">
+  <a class="brand" href="index.html">📈 CEO<span>Trades</span></a>
+  <nav>
+        <a href="index.html">Dashboard</a>
+        <a href="paper.html" class="active">Paper book</a>
+        <a href="trades.html">Trades</a>
+        <a href="companies.html">Companies</a>
+        <a href="insiders.html">Insiders</a>
+        <a href="analysis.html">Findings</a>
+        <a href="about.html">About</a>
+  </nav>
+</div></header>
 <main class="wrap">
-
-<section class="hero paper">
+<div class="page-head">
   <h1>Paper book</h1>
-  <p>Every simulated fill: $10,000 notional, next regular-session open after the Form&nbsp;4 filing date,
-  marked to the latest verified close. Insider price, shares and dollar amount are kept next to our fill
-  so the delay gap is visible. Positions are not closed — this is a forward test, not a round-trip backtest.</p>
-  <span class="range">Fixed $10,000 · no commissions modelled · no lookahead</span>
-</section>
-
-<div class="grid g6" id="paperstats"></div>
-
-<div class="grid g2" style="margin-top:16px">
-  <div class="card"><h3>Equity curve <small>· deployed vs mark-to-market</small></h3><div id="papereq"></div></div>
-  <div class="card"><h3>The rule</h3><div id="paperrule" class="doc"></div></div>
+  <p>Every simulated position. When an insider reports an open-market purchase (Form 4/5,
+     transaction code <code>P</code>), we buy <strong>$10,000</strong> of the stock at the
+     regular-session <strong>open of the first trading day strictly after the filing date</strong>.
+     Positions are never closed — this is a forward test. <em>Gap</em> is how much more (or less)
+     we paid than the insider.</p>
 </div>
 
-<div class="grid g2" style="margin-top:16px">
-  <div class="card"><h3>Findings</h3><div id="paperfindings"></div></div>
-  <div class="card"><h3>Return by horizon</h3><div id="horizons" class="table-scroll"></div></div>
-</div>
+<div class="grid g4" id="kpis"></div>
+<div id="rule" class="note" style="display:none"></div>
 
-<div class="grid g2" style="margin-top:16px">
-  <div class="card"><h3>Mean ROI by insider role</h3><div id="byrole"></div></div>
-  <div class="card"><h3>Mean ROI by insider purchase size</h3><div id="bysize"></div></div>
+<h2 class="sec">Positions</h2>
+<div class="controls">
+  <input type="search" id="q" placeholder="Search ticker, company or insider…">
+  <select id="status"><option value="">All statuses</option><option value="open">Open</option><option value="awaiting_entry">Awaiting entry</option><option value="no_price">No price</option></select>
+  <select id="role"><option value="">All roles</option><option>Director</option><option>Officer</option><option>10% Owner</option></select>
+  <select id="win"><option value="">All results</option><option value="w">Winners only</option><option value="l">Losers only</option></select>
+  <button class="btn" id="csv">Export view (CSV)</button>
+  <a class="btn" href="data/paper/positions.csv.gz" download>Full book (.csv.gz)</a>
 </div>
-
-<div class="toolbar" style="margin-top:18px">
-  <input type="search" id="pq" placeholder="Search ticker, company, insider…">
-  <select id="pstatus">
-    <option value="">All statuses</option>
-    <option value="open">Open</option>
-    <option value="awaiting_entry">Awaiting next open</option>
-    <option value="no_price">No verified price</option>
-  </select>
-  <span class="spacer"></span>
-  <a class="btn ghost" href="data/paper/positions.csv" download>⬇ Download CSV</a>
-</div>
-<div id="paperTable"></div>
-
+<div class="card tight" id="tbl"></div>
 </main>
-<footer class="wrap foot">
-  <div class="foot-in">
-    <div><strong>CEOTrades</strong> — insider paper trading. $10k per open-market buy, next session’s open.</div>
-    <div class="foot-src">
-      Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
-      Form 4 / Form 5 filings · collected automatically by GitHub Actions ·
-      <span data-slot="last-updated">loading…</span>
-    </div>
-    <div class="foot-disc">Data is public SEC filing data. Not investment advice.</div>
-  </div>
-</footer>
+<footer><div class="wrap">
+  <div>Source: <a href="https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets">SEC Forms 3/4/5</a>.
+    Prices: Yahoo Finance / Stooq. Educational research only — not investment advice.</div>
+  <div><a href="https://github.com/karagemop466-tech/CEOTrades">Source on GitHub</a></div>
+</div></footer>
 <script src="js/app.js"></script>
+<script>
+Promise.all([CT.load('data/paper/summary.json'), CT.load('data/paper/positions.json')])
+.then(function (r) {
+  var s = r[0], rows = r[1] || [];
+  document.getElementById('kpis').innerHTML =
+    CT.statCard('Open positions', CT.fmtInt(s.counts.open), CT.fmtInt(s.counts.signals) + ' signals total') +
+    CT.statCard('Deployed', CT.fmtMoney(s.capital.deployed), '$' + CT.fmtInt(s.stake) + ' per signal') +
+    CT.statCard('Value now', CT.fmtMoney(s.capital.value), 'at last close') +
+    CT.statCard('Net P&L', CT.fmtMoney(s.capital.pnl), CT.fmtPct(s.capital.roi), CT.pctCls(s.capital.roi));
+
+  if (s.rule) {
+    var n = document.getElementById('rule');
+    n.style.display = 'block';
+    n.innerHTML = '<strong>Rule:</strong> ' + CT.esc(s.rule.entry) + '. ' +
+      '<strong>Exit:</strong> ' + CT.esc(s.rule.exit) + '. ' +
+      '<strong>Costs:</strong> ' + CT.esc(s.rule.costs) + '.';
+  }
+  if (rows.length < s.counts.signals) {
+    var d = document.createElement('div');
+    d.className = 'note';
+    d.innerHTML = 'Showing the ' + CT.fmtInt(rows.length) + ' most recent positions. ' +
+      'Download the full book of ' + CT.fmtInt(s.counts.signals) + ' via the button above.';
+    document.getElementById('rule').insertAdjacentElement('afterend', d);
+  }
+
+  var cols = [
+    { key: 'fd', label: 'Filed', cls: 'nowrap' },
+    { key: 'entry_d', label: 'Entry', cls: 'nowrap', render: function (r) { return r.entry_d ? CT.esc(r.entry_d) : '<span class="b warn">' + CT.esc((r.status||'').replace('_',' ')) + '</span>'; } },
+    { key: 'tk', label: 'Ticker', render: function (r) { return '<a class="ticker" href="companies.html?cik=' + CT.esc(r.icik || '') + '">' + CT.esc(r.tk) + '</a>'; } },
+    { key: 'co', label: 'Company', render: function (r) { return '<div class="trunc" title="' + CT.esc(r.co) + '">' + CT.esc(CT.titleCase(r.co)) + '</div>'; } },
+    { key: 'insider', label: 'Insider', render: function (r) { return '<div class="trunc" title="' + CT.esc(r.insider) + '">' + CT.esc(CT.titleCase(r.insider)) + '</div><div class="sub">' + CT.esc(r.title || r.rel || '') + '</div>'; } },
+    { key: 'insider_val', label: 'Insider spent', num: true, render: function (r) { return CT.fmtMoney(r.insider_val); }, title: 'Dollar value the insider reported' },
+    { key: 'insider_px', label: 'Their px', num: true, render: function (r) { return CT.fmtPx(r.insider_px); } },
+    { key: 'entry_px', label: 'Our entry', num: true, render: function (r) { return CT.fmtPx(r.entry_px); }, title: 'Open of the first session after the filing' },
+    { key: 'gap', label: 'Gap', num: true, render: function (r) { return '<span class="' + CT.pctCls(-CT.num(r.gap)) + '">' + CT.fmtPct(r.gap) + '</span>'; }, title: 'Our entry vs the insider price' },
+    { key: 'last_px', label: 'Last', num: true, render: function (r) { return CT.fmtPx(r.last_px); } },
+    { key: 'pnl', label: 'P&L', num: true, render: function (r) { return '<span class="' + CT.pctCls(r.pnl) + '">' + CT.fmtUSD(r.pnl) + '</span>'; } },
+    { key: 'roi', label: 'ROI', num: true, render: function (r) { return '<strong class="' + CT.pctCls(r.roi) + '">' + CT.fmtPct(r.roi) + '</strong>'; } },
+    { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
+  ];
+  var t = new CT.Table({ mount: '#tbl', rows: rows, cols: cols, pageSize: 50, sortKey: 'fd', sortDir: -1 });
+
+  function apply() {
+    var q = document.getElementById('q').value.trim().toLowerCase();
+    var st = document.getElementById('status').value;
+    var role = document.getElementById('role').value;
+    var win = document.getElementById('win').value;
+    t.filter(function (r) {
+      if (st && r.status !== st) return false;
+      if (role && String(r.rel || '').indexOf(role) < 0) return false;
+      if (win) { var v = CT.num(r.roi); if (v === null) return false;
+        if (win === 'w' && v <= 0) return false; if (win === 'l' && v >= 0) return false; }
+      if (q) {
+        var hay = (r.tk + ' ' + r.co + ' ' + r.insider).toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+  ['q','status','role','win'].forEach(function (id) {
+    var el = document.getElementById(id);
+    el.addEventListener(id === 'q' ? 'input' : 'change', id === 'q' ? CT.debounce(apply, 200) : apply);
+  });
+  document.getElementById('csv').addEventListener('click', function () {
+    CT.download('ceotrades-paper-view.csv', CT.toCSV(t.view, cols));
+  });
+}).catch(function (e) { CT.fail(document.getElementById('tbl'), e); });
+</script>
 </body>
 </html>

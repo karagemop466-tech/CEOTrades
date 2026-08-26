@@ -1,1 +1,1 @@
-filing_date,transaction_date,form,amended,accession,company,ticker,issuer_cik,insider,insider_cik,relationship,title,code,code_text,side,security,shares,price,value,acquired_disposed,shares_after,direct_indirect,derivative,underlying,exercise_price,expiration,edgar_url
+fd,td,co,tk,in,rel,title,code,ct,side,sec,sh,px,val,ad,af,di,der,acc,icik,pcik,form,amend,xp,exp,under

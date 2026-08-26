@@ -1,86 +1,109 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Insider Paper-Trading Dashboard · CEOTrades</title>
-<meta name="description" content="Forward-test of insider open-market buys: $10,000 paper longs at the next open after each Form 4, marked to real prices.">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard · CEOTrades</title>
+<meta name="description" content="Every SEC insider trade, collected and forward-tested with simulated $10,000 positions at real market prices.">
 <link rel="stylesheet" href="css/site.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 </head>
-<body data-page="index">
-<header class="top">
-  <div class="wrap nav">
-    <a class="brand" href="index.html"><span class="brand-ico">📈</span>CEO<span>Trades</span></a>
-    <nav>
-    <a href="index.html" data-nav="index">Dashboard</a>
-    <a href="paper.html" data-nav="paper">Paper book</a>
-    <a href="trades.html" data-nav="trades">Trades</a>
-    <a href="companies.html" data-nav="companies">Companies</a>
-    <a href="insiders.html" data-nav="insiders">Insiders</a>
-    <a href="analysis.html" data-nav="analysis">Findings</a>
-    <a href="about.html" data-nav="about">About</a>
-</nav>
-  </div>
-</header>
+<body>
+<header class="top"><div class="wrap nav">
+  <a class="brand" href="index.html">📈 CEO<span>Trades</span></a>
+  <nav>
+        <a href="index.html" class="active">Dashboard</a>
+        <a href="paper.html">Paper book</a>
+        <a href="trades.html">Trades</a>
+        <a href="companies.html">Companies</a>
+        <a href="insiders.html">Insiders</a>
+        <a href="analysis.html">Findings</a>
+        <a href="about.html">About</a>
+  </nav>
+</div></header>
 <main class="wrap">
-
-<section class="hero paper">
-  <h1>Follow insider buys. $10,000 a fill. Real prices.</h1>
-  <p>When an officer, director or 10% owner files an open-market purchase (Form&nbsp;4 code&nbsp;P),
-  the paper book buys <strong>$10,000</strong> of that stock at the <strong>next regular-session open</strong>
-  after the filing hits EDGAR — never the insider’s own fill. Positions stay open and are marked
-  to the latest verified close. No manual input.</p>
-  <span class="range" data-slot="range">loading…</span>
+<section class="hero">
+  <h1>Every insider trade, collected and forward-tested.</h1>
+  <p>CEOTrades pulls every SEC Form 3, 4 and 5 filed by corporate insiders, organises it by
+     company and person, and paper-trades each open-market purchase with a simulated
+     $10,000 bought at the first market open <em>after</em> the filing became public —
+     using real daily prices, never the insider's own fill.</p>
+  <div class="pills" id="pills"></div>
 </section>
 
-<div class="steps">
-  <div class="step"><div class="n">1</div><h3>Insider files Form 4</h3><p>SEC EDGAR, parsed automatically. We record the insider’s price, shares and dollar amount.</p></div>
-  <div class="step"><div class="n">2</div><h3>We enter $10k next open</h3><p>First session strictly after the filing date. Filing-day prices are never used — no lookahead.</p></div>
-  <div class="step"><div class="n">3</div><h3>Track ROI at real closes</h3><p>Yahoo / Stooq / Nasdaq daily bars. Gap vs the insider fill, +1 / +5 / +21 day returns, live P&amp;L.</p></div>
+<div class="grid g5" id="kpis"></div>
+
+<h2 class="sec">Paper book <small>simulated $10,000 per insider purchase</small></h2>
+<div class="grid g4" id="paperkpis"></div>
+
+<h2 class="sec">Explore</h2>
+<div class="hub">
+  <a href="paper.html"><div class="t">📊 Paper book</div><div class="d">Every simulated position: insider's price, our entry, gap, ROI and horizon returns.</div></a>
+  <a href="trades.html"><div class="t">🧾 All trades</div><div class="d">Search and filter the full transaction tape by ticker, insider, code and date.</div></a>
+  <a href="companies.html"><div class="t">🏢 Companies</div><div class="d">Insider activity aggregated per issuer, with buy/sell flow and net dollars.</div></a>
+  <a href="insiders.html"><div class="t">👤 Insiders</div><div class="d">Directors, officers and 10% owners ranked by activity and net flow.</div></a>
+  <a href="analysis.html"><div class="t">🔍 Findings</div><div class="d">ROI by role, conviction size and holding period, plus filing-lag statistics.</div></a>
+  <a href="about.html"><div class="t">📖 Methodology</div><div class="d">Exactly how signals, entries and returns are computed — and the caveats.</div></a>
 </div>
 
-<div class="grid g6" id="paperstats"></div>
-
-<div class="grid g2" style="margin-top:16px">
-  <div class="card"><h3>Paper-book equity <small>· weekday MTM of every $10k long</small></h3><div id="papereq"></div></div>
-  <div class="card"><h3>Findings <small>· computed, not guessed</small></h3><div id="paperfindings"></div></div>
-</div>
-
-<div class="card" style="margin-top:16px"><h3>Latest paper fills <small>· $10k per insider buy</small></h3><div id="paperlatest"></div></div>
-
-<h2 class="sec">Insider filings <small>· the raw Form 4 / Form 5 tape</small></h2>
-<div class="grid g6" id="stats"></div>
-
-<div class="grid g2" style="margin-top:16px">
-  <div class="card"><h3>Latest insider activity <small>· most recent filings</small></h3><div id="latest"></div></div>
-  <div class="card"><h3>Most active companies <small>· trades in dataset</small></h3><div id="topco"></div></div>
-</div>
-
-<div class="grid g2" style="margin-top:16px">
-  <div class="card"><h3>Net open-market flow by company <small>· buys minus sells, top 10 by |net|</small></h3>
-    <div id="netflow"></div></div>
-  <div class="card"><h3>Trades filed per day <small>· last 30 days</small></h3>
-    <div id="dailychart"></div><div id="dailyx"></div><div id="dailynote" class="count-note"></div></div>
-</div>
-
-<div class="grid g2" style="margin-top:16px">
-  <div class="card"><h3>Top net buyers <small>· open-market P − S</small></h3><div id="buyers"></div></div>
-  <div class="card"><h3>Top net sellers <small>· open-market P − S</small></h3><div id="sellers"></div></div>
-</div>
-
+<h2 class="sec">Recent filings <small id="tapesub"></small></h2>
+<div class="card tight" id="tape"></div>
+<div style="margin-top:12px"><a class="btn" href="trades.html">Browse all trades →</a></div>
 </main>
-<footer class="wrap foot">
-  <div class="foot-in">
-    <div><strong>CEOTrades</strong> — insider paper trading. $10k per open-market buy, next session’s open.</div>
-    <div class="foot-src">
-      Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
-      Form 4 / Form 5 filings · collected automatically by GitHub Actions ·
-      <span data-slot="last-updated">loading…</span>
-    </div>
-    <div class="foot-disc">Data is public SEC filing data. Not investment advice.</div>
-  </div>
-</footer>
+<footer><div class="wrap">
+  <div>Source: <a href="https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets">SEC Forms 3/4/5</a>.
+    Prices: Yahoo Finance / Stooq. Educational research only — not investment advice.</div>
+  <div><a href="https://github.com/karagemop466-tech/CEOTrades">Source on GitHub</a></div>
+</div></footer>
 <script src="js/app.js"></script>
+<script>
+Promise.all([CT.load('data/summary.json'), CT.load('data/paper/summary.json').catch(function(){return null;}), CT.load('data/recent.json').catch(function(){return [];})])
+.then(function (r) {
+  var s = r[0], p = r[1], recent = r[2] || [];
+  var c = s.counts, v = s.value;
+  document.getElementById('pills').innerHTML =
+    '<span class="pill">' + CT.fmtInt(c.trades) + ' transactions</span>' +
+    '<span class="pill">' + CT.fmtInt(c.companies) + ' companies</span>' +
+    '<span class="pill">' + CT.fmtInt(c.insiders) + ' insiders</span>' +
+    '<span class="pill">' + CT.esc(s.range.from || '—') + ' → ' + CT.esc(s.range.to || '—') + '</span>';
+
+  document.getElementById('kpis').innerHTML =
+    CT.statCard('Transactions', CT.fmtInt(c.trades), CT.fmtInt(c.filings) + ' filings') +
+    CT.statCard('Companies', CT.fmtInt(c.companies), 'issuers with filings') +
+    CT.statCard('Insiders', CT.fmtInt(c.insiders), 'directors, officers, 10% owners') +
+    CT.statCard('Insider buying', CT.fmtMoney(v.buy), CT.fmtInt(c.buys) + ' code-P purchases', 'buy') +
+    CT.statCard('Insider selling', CT.fmtMoney(v.sell), CT.fmtInt(c.sells) + ' code-S sales', 'sell');
+
+  var pk = document.getElementById('paperkpis');
+  if (p && p.counts && p.counts.open) {
+    pk.innerHTML =
+      CT.statCard('Open positions', CT.fmtInt(p.counts.open), 'one per insider-buy filing') +
+      CT.statCard('Capital deployed', CT.fmtMoney(p.capital.deployed), '$10,000 each') +
+      CT.statCard('Current value', CT.fmtMoney(p.capital.value), 'marked to last close') +
+      CT.statCard('Net P&L', CT.fmtMoney(p.capital.pnl), CT.fmtPct(p.capital.roi) + ' on deployed capital',
+                  CT.pctCls(p.capital.roi));
+  } else {
+    pk.innerHTML = '<div class="card"><div class="empty">No paper positions yet — the collector has not run.</div></div>';
+  }
+
+  document.getElementById('tapesub').textContent = recent.length ? 'latest ' + CT.fmtInt(recent.length) + ' rows' : '';
+  new CT.Table({
+    mount: '#tape', rows: recent, pageSize: 25, sortKey: 'fd', sortDir: -1,
+    empty: 'No recent filings in the window.',
+    cols: [
+      { key: 'fd', label: 'Filed', cls: 'nowrap' },
+      { key: 'tk', label: 'Ticker', render: function (r) {
+          return r.tk ? '<a class="ticker" href="companies.html?cik=' + CT.esc(r.icik || '') + '">' + CT.esc(r.tk) + '</a>' : '<span class="sub">—</span>'; } },
+      { key: 'co', label: 'Company', render: function (r) { return '<div class="trunc" title="' + CT.esc(r.co) + '">' + CT.esc(CT.titleCase(r.co)) + '</div>'; } },
+      { key: 'in', label: 'Insider', render: function (r) { return '<div class="trunc" title="' + CT.esc(r['in']) + '">' + CT.esc(CT.titleCase(r['in'])) + '</div><div class="sub">' + CT.esc(r.rel || '') + '</div>'; } },
+      { key: 'code', label: 'Code', render: function (r) { return CT.sideBadge(r.code, r.side); } },
+      { key: 'sh', label: 'Shares', num: true, render: function (r) { return CT.fmtInt(r.sh); } },
+      { key: 'px', label: 'Price', num: true, render: function (r) { return CT.fmtPx(r.px); } },
+      { key: 'val', label: 'Value', num: true, render: function (r) { return CT.fmtMoney(r.val); } },
+      { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
+    ]
+  });
+}).catch(function (e) { CT.fail(document.getElementById('kpis'), e); });
+</script>
 </body>
 </html>

@@ -1,49 +1,74 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Insiders · CEOTrades</title>
-<meta name="description" content="Directors, officers and 10%+ owners and their trades.">
+<meta name="description" content="Directors, officers and 10% owners ranked by insider trading activity.">
 <link rel="stylesheet" href="css/site.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 </head>
-<body data-page="insiders">
-<header class="top">
-  <div class="wrap nav">
-    <a class="brand" href="index.html"><span class="brand-ico">📈</span>CEO<span>Trades</span></a>
-    <nav>
-    <a href="index.html" data-nav="index">Dashboard</a>
-    <a href="paper.html" data-nav="paper">Paper book</a>
-    <a href="trades.html" data-nav="trades">Trades</a>
-    <a href="companies.html" data-nav="companies">Companies</a>
-    <a href="insiders.html" data-nav="insiders">Insiders</a>
-    <a href="analysis.html" data-nav="analysis">Findings</a>
-    <a href="about.html" data-nav="about">About</a>
-</nav>
-  </div>
-</header>
+<body>
+<header class="top"><div class="wrap nav">
+  <a class="brand" href="index.html">📈 CEO<span>Trades</span></a>
+  <nav>
+        <a href="index.html">Dashboard</a>
+        <a href="paper.html">Paper book</a>
+        <a href="trades.html">Trades</a>
+        <a href="companies.html">Companies</a>
+        <a href="insiders.html" class="active">Insiders</a>
+        <a href="analysis.html">Findings</a>
+        <a href="about.html">About</a>
+  </nav>
+</div></header>
 <main class="wrap">
-
-<section class="hero">
+<div class="page-head">
   <h1>Insiders</h1>
-  <p>Directors, executive officers and 10%+ beneficial owners — the people required by Section 16 of the Exchange Act to report their trades.</p>
-</section>
-<div class="toolbar"><input type="search" id="inSearch" placeholder="Filter by name, title or company…"><span class="spacer"></span></div>
-<div id="inTable"></div>
-
+  <p>Every reporting person — directors, officers and 10%+ owners — ranked by filing activity,
+     with the dollar value they have bought and sold on the open market.</p>
+</div>
+<div class="controls">
+  <input type="search" id="q" placeholder="Search insider name…">
+  <select id="role"><option value="">All roles</option><option>Director</option><option>Officer</option><option>10% Owner</option></select>
+  <button class="btn" id="csv">Export view (CSV)</button>
+</div>
+<div class="card tight" id="tbl"></div>
 </main>
-<footer class="wrap foot">
-  <div class="foot-in">
-    <div><strong>CEOTrades</strong> — insider paper trading. $10k per open-market buy, next session’s open.</div>
-    <div class="foot-src">
-      Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch" target="_blank" rel="noopener">SEC EDGAR</a>
-      Form 4 / Form 5 filings · collected automatically by GitHub Actions ·
-      <span data-slot="last-updated">loading…</span>
-    </div>
-    <div class="foot-disc">Data is public SEC filing data. Not investment advice.</div>
-  </div>
-</footer>
+<footer><div class="wrap">
+  <div>Source: <a href="https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets">SEC Forms 3/4/5</a>.
+    Prices: Yahoo Finance / Stooq. Educational research only — not investment advice.</div>
+  <div><a href="https://github.com/karagemop466-tech/CEOTrades">Source on GitHub</a></div>
+</div></footer>
 <script src="js/app.js"></script>
+<script>
+var COLS = [
+  { key: 'in', label: 'Insider', render: function (r) { return '<strong>' + CT.esc(CT.titleCase(r['in'])) + '</strong>' + (r.title ? '<div class="sub">' + CT.esc(r.title) + '</div>' : ''); } },
+  { key: 'rel', label: 'Role', render: function (r) { return '<span class="b acc">' + CT.esc(r.rel) + '</span>'; } },
+  { key: 'cos', label: 'Companies', num: true, render: function (r) { return CT.fmtInt(r.cos); } },
+  { key: 'n', label: 'Trades', num: true, render: function (r) { return CT.fmtInt(r.n); } },
+  { key: 'buy_n', label: 'Buys', num: true, render: function (r) { return CT.fmtInt(r.buy_n); } },
+  { key: 'sell_n', label: 'Sells', num: true, render: function (r) { return CT.fmtInt(r.sell_n); } },
+  { key: 'buy_v', label: 'Bought', num: true, render: function (r) { return '<span class="pos">' + CT.fmtMoney(r.buy_v) + '</span>'; } },
+  { key: 'sell_v', label: 'Sold', num: true, render: function (r) { return '<span class="neg">' + CT.fmtMoney(r.sell_v) + '</span>'; } },
+  { key: 'net_v', label: 'Net flow', num: true, render: function (r) { return '<strong class="' + CT.pctCls(r.net_v) + '">' + CT.fmtMoney(r.net_v) + '</strong>'; } },
+  { key: 'last', label: 'Last filing', cls: 'nowrap' }
+];
+CT.load('data/insiders.json').then(function (rows) {
+  var t = new CT.Table({ mount: '#tbl', rows: rows || [], cols: COLS, pageSize: 50, sortKey: 'n', sortDir: -1 });
+  function apply() {
+    var q = document.getElementById('q').value.trim().toLowerCase();
+    var role = document.getElementById('role').value;
+    t.filter(function (r) {
+      if (role && String(r.rel || '').indexOf(role) < 0) return false;
+      return !q || String(r['in'] || '').toLowerCase().indexOf(q) >= 0;
+    });
+  }
+  document.getElementById('q').addEventListener('input', CT.debounce(apply, 200));
+  document.getElementById('role').addEventListener('change', apply);
+  document.getElementById('csv').addEventListener('click', function () {
+    CT.download('ceotrades-insiders.csv', CT.toCSV(t.view, COLS));
+  });
+}).catch(function (e) { CT.fail(document.getElementById('tbl'), e); });
+</script>
 </body>
 </html>
