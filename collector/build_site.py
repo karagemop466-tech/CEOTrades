@@ -106,10 +106,15 @@ def backfill(budget_min: float) -> None:
         f"budget {budget_min:.0f} min")
 
     deadline = time.monotonic() + budget_min * 60
+    source_failed = False
     for label in refresh:
         log(f"== refresh {label}")
         try:
             ok, _ = ingest(label)
+        except bb.TransientFetchError as e:
+            log(f"   ! transient SEC/network failure: {e}")
+            source_failed = True
+            break
         except Exception as e:  # noqa: BLE001
             log(f"   ! {e}")
             continue
@@ -118,6 +123,13 @@ def backfill(budget_min: float) -> None:
             unavailable.discard(label)
         else:
             log("   not published yet")
+
+    if source_failed:
+        log("Backfill paused because SEC sources were unavailable. Existing data is preserved; no quarters were marked unavailable.")
+        st["done"] = sorted(done)
+        st["unavailable"] = sorted(unavailable)
+        save_state(st)
+        return
 
     for label in todo:
         if label in refresh:
@@ -129,6 +141,10 @@ def backfill(budget_min: float) -> None:
         log(f"== {label}")
         try:
             ok, _ = ingest(label)
+        except bb.TransientFetchError as e:
+            log(f"   ! transient SEC/network failure: {e}")
+            log("Backfill paused. Quarter remains retryable on the next run.")
+            break
         except Exception as e:  # noqa: BLE001
             log(f"   ! failed: {e}")
             continue
