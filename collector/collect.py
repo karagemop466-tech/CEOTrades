@@ -125,6 +125,10 @@ STATS = {
     "errors": [],
     "days": {},
 }
+# Distinguishes a genuine 404 (weekend/holiday/not-yet-published index) from
+# transport/server failure. Treating every failed request as a holiday would
+# permanently create silent holes in the historical archive.
+LAST_HTTP_FAILED = False
 
 
 def http_get(url: str, retries: int = 3, timeout: int = 30):
@@ -132,6 +136,8 @@ def http_get(url: str, retries: int = 3, timeout: int = 30):
 
     None is returned for 404 (resource missing) or after exhausted retries.
     """
+    global LAST_HTTP_FAILED
+    LAST_HTTP_FAILED = False
     last_err = None
     for attempt in range(retries + 1):
         THROTTLE.wait()
@@ -155,6 +161,7 @@ def http_get(url: str, retries: int = 3, timeout: int = 30):
         # Backoff: 5s, 15s, 45s (SEC may temporarily rate-limit).
         if attempt < retries:
             time.sleep(5 * (3 ** attempt))
+    LAST_HTTP_FAILED = True
     log(f"  ! giving up: {last_err}")
     STATS["errors"].append(last_err)
     return None
@@ -464,8 +471,12 @@ def enum_day(day: date) -> tuple[list[dict] | None, str]:
            f"master.{day.strftime('%Y%m%d')}.idx")
     raw = http_get(url)
     if raw is None:
+        master_failed = LAST_HTTP_FAILED
         recs, note = enum_day_efts(day)
+        efts_failed = LAST_HTTP_FAILED
         if recs is None:
+            if master_failed or efts_failed:
+                return None, "SOURCE UNAVAILABLE — retry required; " + note
             return None, "no index published (weekend/holiday or not yet built); " + note
         return recs, "master.idx missing; " + note
     records = parse_master_idx(raw)
@@ -543,8 +554,10 @@ def collect_day(day: date) -> tuple[list[dict], bool]:
     records, note = enum_day(day)
     log(f"   enumeration: {note}")
     if records is None:
-        STATS["days"][day.isoformat()] = {"note": note, "filings": 0, "trades": 0,
-                                          "index": False}
+        STATS["days"][day.isoformat()] = {
+            "note": note, "filings": 0, "trades": 0, "index": False,
+            "retry": note.startswith("SOURCE UNAVAILABLE"),
+        }
         return [], False
     rows = []
     for i, rec in enumerate(records, 1):
@@ -732,6 +745,7 @@ def main():
     t0 = time.monotonic()
     budget_s = args.budget_min * 60.0
     new_rows = []
+    consecutive_source_failures = 0
     for day in worklist:
         if day.isoformat() in done_days and not args.force:
             continue
@@ -741,6 +755,18 @@ def main():
             break
         rows, _found = collect_day(day)
         new_rows.extend(rows)
+        info = STATS["days"].get(day.isoformat(), {})
+        if info.get("retry"):
+            consecutive_source_failures += 1
+            # A network-wide SEC outage should not turn an 80-minute run into
+            # dozens of identical retries. Leave every day unmarked so the
+            # next scheduled run resumes safely.
+            if consecutive_source_failures >= 2:
+                log("SEC sources unavailable for 2 consecutive days; "
+                    "stopping early without marking either day complete.")
+                break
+        else:
+            consecutive_source_failures = 0
 
     merged = merge_dataset(dataset, new_rows)
 
@@ -763,7 +789,7 @@ def main():
         # A processed index marks the day done. A 404 also marks the day done
         # when it is safely in the past (weekend/holiday — the index will
         # never appear); recent 404s stay retryable (index not yet built).
-        if info.get("index") or d < recent_cut:
+        if info.get("index") or (d < recent_cut and not info.get("retry")):
             stats["days_collected"][d] = info
 
     save_dataset(args.data_dir, merged)
