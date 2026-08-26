@@ -149,6 +149,51 @@ def backfill(budget_min: float) -> None:
         + (f" (next: {remaining[0]})" if remaining else " — history complete"))
 
 
+def write_empty_outputs():
+    """Publish schema-valid empty artifacts so the site renders a clean
+    'awaiting first collection' state instead of failing to fetch."""
+    out = os.path.join(os.path.dirname(HERE), "data")
+    os.makedirs(os.path.join(out, "paper"), exist_ok=True)
+    os.makedirs(os.path.join(out, "csv"), exist_ok=True)
+    os.makedirs(os.path.join(out, "co"), exist_ok=True)
+    stamp = date.today().isoformat()
+
+    def w(name, obj):
+        with open(os.path.join(out, name), "w", encoding="utf-8") as f:
+            json.dump(obj, f, separators=(",", ":"))
+
+    w("summary.json", {
+        "generated": stamp, "range": {"from": "", "to": ""},
+        "counts": {"trades": 0, "filings": 0, "companies": 0, "insiders": 0,
+                   "with_ticker": 0, "with_price": 0, "derivative": 0,
+                   "buys": 0, "sells": 0, "paper_positions": 0},
+        "value": {"total": 0, "buy": 0, "sell": 0, "net": 0},
+        "by_code": [], "by_rel": [], "by_side": [], "by_form": [],
+        "yearly": [], "months": []})
+    w("recent.json", [])
+    w("companies.json", [])
+    w("insiders.json", [])
+    w("paper/summary.json", {
+        "stake": build_data.STAKE,
+        "counts": {"signals": 0, "open": 0, "awaiting_entry": 0, "no_price": 0},
+        "capital": {"deployed": 0, "value": 0, "pnl": 0, "roi": None},
+        "roi": build_data.stats([]), "gap": build_data.stats([]),
+        "horizons": {h: build_data.stats([]) for h in
+                     ("r1", "r5", "r21", "r63", "r252")},
+        "by_role": [], "by_size": [], "by_year": [], "best": [], "worst": [],
+        "rule": {"entry": "regular-session open of the first trading day strictly "
+                          "after the SEC filing date",
+                 "exit": "none — positions stay open for forward testing",
+                 "costs": "no commission, slippage or spread modelled"},
+        "findings": ["No data collected yet. The nightly GitHub Actions job "
+                     "populates the full SEC insider-trade history automatically."],
+        "generated": stamp})
+    w("paper/positions.json", [])
+    w("paper/equity.json", [])
+    with open(os.path.join(out, "trades.csv"), "w", encoding="utf-8") as f:
+        f.write(",".join(build_data.COMPACT_KEYS) + "\n")
+
+
 def main() -> int:
     if os.environ.get("CEOTRADES_SKIP_BACKFILL") != "1":
         try:
@@ -161,7 +206,8 @@ def main() -> int:
     shards = store.shard_files(DATA)
     log(f"\nStore: {len(shards)} shard(s)")
     if not shards:
-        log("No data collected yet — nothing to publish.")
+        log("No data collected yet — writing empty (but valid) site artifacts.")
+        write_empty_outputs()
         return 1
 
     log("\nBuilding site data …")
