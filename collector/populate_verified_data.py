@@ -101,7 +101,7 @@ VERIFIED_TRADES = [
         acc="0001374545-26-000010", co="AMAZON COM INC", tk="AMZN", icik="1018724",
         insider="Jassy Andrew R", pcik="1374545", own_n=1, rel="Director/Officer",
         title="President and CEO", code="S", sec="Common Stock, par value $.01 per share",
-        sh=7478, px=258.6654, val=1934300.08, ad="D", af=2245091, di="D"
+        sh=7478, px=258.6654, val=1934299.86, ad="D", af=2245091, di="D"
     ),
     make_row(
         fd="2026-08-25", td="2026-08-21", period="2026-08-21", form="4", amend=0,
