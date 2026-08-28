@@ -33,7 +33,7 @@ def load(rel):
 
 
 PAGES = ["index.html", "paper.html", "trades.html", "companies.html",
-         "insiders.html", "analysis.html", "about.html"]
+         "insiders.html", "analysis.html", "irregularities.html", "about.html"]
 
 
 def main() -> int:
