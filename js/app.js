@@ -156,7 +156,7 @@
         esc(this.empty) + '</div></td></tr>';
     }
     for (i = 0; i < slice.length; i++) {
-      h += '<tr>';
+      h += '<tr data-i="' + (this.page * this.size + i) + '">';
       for (var j = 0; j < this.cols.length; j++) {
         c = this.cols[j];
         var v = c.render ? c.render(slice[i], this.page * this.size + i) : esc(slice[i][c.key]);
