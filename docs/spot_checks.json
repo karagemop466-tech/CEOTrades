@@ -1,0 +1,62 @@
+{
+  "description": "Manual line-by-line spot checks: rows in the CEOTrades store compared field-by-field against the official SEC EDGAR filing documents (fetched from sec.gov directly). Every field listed was confirmed identical to the as-filed Form 4 XML/SGML.",
+  "method": "Each accession was fetched from https://www.sec.gov/Archives/edgar/data/{issuer_cik}/{accession_nodash}/{accession}.txt and the STORE row compared to the SEC-HEADER and ownershipDocument XML values (filed date, acceptance datetime, form type, issuer name/CIK/ticker, owner name/CIK, relationship/title, transaction date, transaction code, shares, price per share, acquired/disposed, shares owned following transaction, direct/indirect).",
+  "checks": [
+    {
+      "accession": "0001225208-26-003385",
+      "store_row": {"fd": "2026-03-06", "td": "2026-03-06", "co": "ICF International, Inc.", "tk": "ICFI", "in": "Mehl Randall", "rel": "Director", "code": "P", "sh": 1100, "px": 74.3, "af": 21574, "icik": "1362004", "pcik": "1694310"},
+      "sec_filing_url": "https://www.sec.gov/Archives/edgar/data/1362004/000122520826003385/0001225208-26-003385.txt",
+      "sec_acceptance": "2026-03-06 16:47:05 ET",
+      "result": "exact_match",
+      "verified_fields": ["acc", "fd", "form", "icik", "co", "tk", "pcik", "in", "rel", "td", "code", "sh", "px", "ad", "af", "di"],
+      "notes": "Open-market purchase per footnote F1; val 1100 x 74.30 = 81,730.00."
+    },
+    {
+      "accession": "0000950103-26-012726",
+      "store_row": {"fd": "2026-08-20", "co": "Meta Platforms, Inc.", "tk": "META", "in": "Bosworth Andrew", "rel": "Officer", "title": "Chief Technology Officer", "code": "S", "sh": 7848, "px": 558.0, "af": 828, "icik": "1326801", "pcik": "1917373"},
+      "sec_filing_url": "https://www.sec.gov/Archives/edgar/data/1326801/000095010326012726/0000950103-26-012726.txt",
+      "sec_acceptance": "2026-08-20 18:29:43 ET",
+      "result": "exact_match",
+      "verified_fields": ["acc", "fd", "form", "icik", "co", "tk", "pcik", "in", "rel", "title", "td", "code", "sh", "px", "ad", "af", "di"],
+      "notes": "Rule 10b5-1 plan sale (footnote F1). Separate indirect trust holding (69,170 sh) is correctly NOT a trade row; only transactions are stored."
+    },
+    {
+      "accession": "0001140361-26-032884",
+      "store_row": {"fd": "2026-08-13", "co": "Apple Inc.", "tk": "AAPL", "in": "Newstead Jennifer", "rel": "Officer", "title": "SVP, GC and Secretary", "code": "S", "sh": 1439, "px": 307.75, "af": 40107, "icik": "320193", "pcik": "1780525"},
+      "sec_filing_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126032884/0001140361-26-032884.txt",
+      "sec_acceptance": "2026-08-13 18:30:20 ET",
+      "result": "exact_match",
+      "verified_fields": ["acc", "fd", "form", "icik", "co", "tk", "pcik", "in", "rel", "title", "td", "code", "sh", "px", "ad", "af", "di"],
+      "notes": "Rule 10b5-1 plan (adopted 2026-05-05)."
+    },
+    {
+      "accession": "0000950142-26-001403",
+      "store_row": {"fd": "2026-05-14", "co": "ALKAMI TECHNOLOGY, INC.", "tk": "ALKT", "in": "GENERAL ATLANTIC, L.P.", "rel": "Director/10% Owner", "code": "P", "sh": 750000, "px": 16.87, "icik": "1529274", "pcik": "1017645"},
+      "sec_filing_url": "https://www.sec.gov/Archives/edgar/data/1529274/000095014226001403/0000950142-26-001403.txt",
+      "sec_acceptance": "2026-05-14 20:19:46 ET",
+      "result": "match",
+      "verified_fields": ["acc", "fd", "form", "icik", "co", "pcik", "in", "code", "sh", "px"],
+      "notes": "Joint filing (9 reporting owners; store carries own_n). Footnote F1: 750,000 shares open-market on 2026-05-12 at weighted average $16.87 (range $16.82-$16.91) - store weighted average matches the as-filed value; multi-lot VWAP is the SEC-reported number, not a store estimate."
+    },
+    {
+      "accession": "0001731122-26-000395",
+      "store_row": {"fd": "2026-03-13", "td": "2026-03-13", "co": "Twin Vee PowerCats, Co.", "tk": "VEEE", "in": "SWETS LARRY G JR", "rel": "Director", "code": "P", "sh": 50000, "px": 0.42, "af": 150000, "icik": "1855509", "pcik": "1409891"},
+      "sec_filing_url": "https://www.sec.gov/Archives/edgar/data/1855509/000173112226000395/0001731122-26-000395.txt",
+      "sec_acceptance": "2026-03-13 17:00:22 ET",
+      "result": "exact_match",
+      "verified_fields": ["acc", "fd", "form", "icik", "co", "tk", "pcik", "in", "rel", "td", "code", "sh", "px", "ad", "af", "di"],
+      "notes": "Open-market purchase per footnote F1."
+    },
+    {
+      "accession": "0001104659-26-074164",
+      "store_row": {"fd": "2026-06-15", "co": "Cytosorbents Corp", "tk": "CTSO", "in": "Chan Phillip P.", "rel": "Director/Officer", "title": "Chief Executive Officer", "code": "P", "sh": 251136, "px": 0.40, "af": 1734099, "icik": "1175151", "pcik": "1442786"},
+      "sec_filing_url": "https://www.sec.gov/Archives/edgar/data/1175151/000110465926074164/0001104659-26-074164.txt",
+      "sec_acceptance": "2026-06-15 18:24:29 ET",
+      "result": "exact_match",
+      "verified_fields": ["acc", "fd", "form", "icik", "co", "tk", "pcik", "in", "rel", "title", "td", "code", "sh", "px", "ad", "af", "di"],
+      "notes": "Open-market purchase at weighted average (footnote F1, range $0.3885-$0.40). Filing holds a second transaction (10,333 sh @ $0.43 on 2026-06-15) which is stored as its own row."
+    }
+  ],
+  "generated": "2026-08-29",
+  "all_matches": true
+}

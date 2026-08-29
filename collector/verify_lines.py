@@ -238,9 +238,22 @@ def main() -> int:
            sum(1 for r in paper_rows if r.get("status") == "open"),
            f"summary={n_open}")
 
+    spot_path = os.path.join(ROOT, "docs", "spot_checks.json")
+    spot = None
+    if os.path.exists(spot_path):
+        try:
+            spot = json.load(open(spot_path, encoding="utf-8"))
+            ok("spot_checks.all_match", spot.get("all_matches") is True,
+               "docs/spot_checks.json")
+            ok("spot_checks.nonempty", bool(spot.get("checks")),
+               f"{len(spot.get('checks') or [])} filings")
+        except (OSError, json.JSONDecodeError) as e:
+            ok("spot_checks.readable", False, str(e))
+
     doc = {
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "target_year": target_year,
+        "spot_checks": spot,
         "checks_passed": PASSED,
         "checks_failed": len(FAILED),
         "failures": FAILED,
@@ -267,6 +280,16 @@ def main() -> int:
     if FAILED:
         lines += ["## Failures", ""]
         lines += [f"- {x}" for x in FAILED] + [""]
+    if spot and spot.get("checks"):
+        lines += ["", "## Manual EDGAR spot checks (field-by-field vs sec.gov)", "",
+                  "Each row below was compared directly against the official SEC filing document fetched from sec.gov.", "",
+                  "| Accession | Company | Insider | Code | Shares | Price | Result | SEC document |",
+                  "|---|---|---|---|---|---|---|---|"]
+        for c in spot["checks"]:
+            r = c.get("store_row", {})
+            lines.append(f"| [{c['accession']}]({c['sec_filing_url']}) | {r.get('co')} | {r.get('in')} "
+                         f"| {r.get('code')} | {r.get('sh')} | ${r.get('px')} | {c.get('result')} "
+                         f"| [sec.gov]({c['sec_filing_url']}) |")
     lines += ["## Method", ""]
     for k, v in doc["method"].items():
         lines.append(f"- **{k}**: {v}")
