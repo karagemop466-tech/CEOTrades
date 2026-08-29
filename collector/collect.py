@@ -800,8 +800,9 @@ def main():
     log(f"Run added {len(new_rows)} trade rows; "
         f"{STATS['requests']} HTTP requests; {len(STATS['errors'])} errors.")
     if not merged:
-        log("FATAL: dataset is empty — check SEC access.")
-        sys.exit(2)
+        log("WARNING: daily JSON dataset is empty after this run. "
+            "Continuing so the target-year/bulk collector can run next; "
+            "build_site.py and the audit will fail or flag incomplete output if official data remains unavailable.")
 
 
 if __name__ == "__main__":
