@@ -52,7 +52,11 @@ from datetime import date, datetime, timedelta, timezone
 # Constants
 # ---------------------------------------------------------------------------
 
-UA = "CEOTrades Insider-Trade Collector (github.com/karagemop466-tech/CEOTrades)"
+UA = os.environ.get(
+    "SEC_UA",
+    "CEOTrades Insider-Trade Collector https://github.com/karagemop466-tech/CEOTrades "
+    "karagemop466-tech@users.noreply.github.com",
+)
 ARCHIVES = "https://www.sec.gov/Archives"
 DAILY_INDEX = ARCHIVES + "/edgar/daily-index"
 
@@ -800,8 +804,9 @@ def main():
     log(f"Run added {len(new_rows)} trade rows; "
         f"{STATS['requests']} HTTP requests; {len(STATS['errors'])} errors.")
     if not merged:
-        log("FATAL: dataset is empty — check SEC access.")
-        sys.exit(2)
+        log("WARNING: daily JSON dataset is empty after this run. "
+            "Continuing so the target-year/bulk collector can run next; "
+            "build_site.py and the audit will fail or flag incomplete output if official data remains unavailable.")
 
 
 if __name__ == "__main__":

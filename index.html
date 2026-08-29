@@ -17,6 +17,7 @@
         <a href="trades.html">Trades</a>
         <a href="companies.html">Companies</a>
         <a href="insiders.html">Insiders</a>
+        <a href="activity.html">Insider flows</a>
         <a href="analysis.html">Findings</a>
         <a href="irregularities.html">Irregularities</a>
         <a href="about.html">About</a>
@@ -33,6 +34,7 @@
 </section>
 
 <div class="grid g5" id="kpis"></div>
+<div class="note" id="auditnote" style="display:none"></div>
 
 <h2 class="sec">Paper book <small>simulated $10,000 per insider purchase</small></h2>
 <div class="grid g4" id="paperkpis"></div>
@@ -43,8 +45,9 @@
   <a href="trades.html"><div class="t">🧾 All trades</div><div class="d">Search and filter the full transaction tape by ticker, insider, code and date.</div></a>
   <a href="companies.html"><div class="t">🏢 Companies</div><div class="d">Insider activity aggregated per issuer, with buy/sell flow and net dollars.</div></a>
   <a href="insiders.html"><div class="t">👤 Insiders</div><div class="d">Directors, officers and 10% owners ranked by activity and net flow.</div></a>
+  <a href="activity.html"><div class="t">🔁 Insider flows</div><div class="d">Track insiders who both buy and sell, with reported post-transaction holdings and review links.</div></a>
   <a href="analysis.html"><div class="t">🔍 Findings</div><div class="d">ROI by role, conviction size and holding period, plus filing-lag statistics.</div></a>
-  <a href="irregularities.html"><div class="t">⚠️ Irregularities</div><div class="d">Forensic audit review: synchronized executive exits, cluster buying, and 10b5-1 cadence anomalies.</div></a>
+  <a href="irregularities.html"><div class="t">⚠️ Irregularities</div><div class="d">Automated review flags for coverage gaps, large transactions, clusters and data-quality issues.</div></a>
   <a href="about.html"><div class="t">📖 Methodology</div><div class="d">Exactly how signals, entries and returns are computed — and the caveats.</div></a>
 </div>
 
@@ -59,9 +62,9 @@
 </div></footer>
 <script src="js/app.js"></script>
 <script>
-Promise.all([CT.load('data/summary.json'), CT.load('data/paper/summary.json').catch(function(){return null;}), CT.load('data/recent.json').catch(function(){return [];})])
+Promise.all([CT.load('data/summary.json'), CT.load('data/paper/summary.json').catch(function(){return null;}), CT.load('data/recent.json').catch(function(){return [];}), CT.load('data/audit.json').catch(function(){return null;})])
 .then(function (r) {
-  var s = r[0], p = r[1], recent = r[2] || [];
+  var s = r[0], p = r[1], recent = r[2] || [], audit = r[3];
   var c = s.counts, v = s.value;
   document.getElementById('pills').innerHTML =
     '<span class="pill">' + CT.fmtInt(c.trades) + ' transactions</span>' +
@@ -75,6 +78,14 @@ Promise.all([CT.load('data/summary.json'), CT.load('data/paper/summary.json').ca
     CT.statCard('Insiders', CT.fmtInt(c.insiders), 'directors, officers, 10% owners') +
     CT.statCard('Insider buying', CT.fmtMoney(v.buy), CT.fmtInt(c.buys) + ' code-P purchases', 'buy') +
     CT.statCard('Insider selling', CT.fmtMoney(v.sell), CT.fmtInt(c.sells) + ' code-S sales', 'sell');
+
+  if (audit && audit.completeness && !audit.completeness.complete) {
+    var an = document.getElementById('auditnote');
+    an.style.display = 'block';
+    an.innerHTML = '<strong>Audit warning:</strong> Current local data is ' +
+      CT.esc(audit.completeness.status || 'incomplete_or_unproven') + '. ' +
+      '<a href="irregularities.html">Review coverage and flags →</a>';
+  }
 
   var pk = document.getElementById('paperkpis');
   if (p && p.counts && p.counts.open) {
@@ -102,7 +113,7 @@ Promise.all([CT.load('data/summary.json'), CT.load('data/paper/summary.json').ca
       { key: 'sh', label: 'Shares', num: true, render: function (r) { return CT.fmtInt(r.sh); } },
       { key: 'px', label: 'Price', num: true, render: function (r) { return CT.fmtPx(r.px); } },
       { key: 'val', label: 'Value', num: true, render: function (r) { return CT.fmtMoney(r.val); } },
-      { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
+      { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc, r.icik) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
     ]
   });
 }).catch(function (e) { CT.fail(document.getElementById('kpis'), e); });

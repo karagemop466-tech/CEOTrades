@@ -17,6 +17,7 @@
         <a href="trades.html">Trades</a>
         <a href="companies.html">Companies</a>
         <a href="insiders.html">Insiders</a>
+        <a href="activity.html">Insider flows</a>
         <a href="analysis.html">Findings</a>
         <a href="irregularities.html">Irregularities</a>
         <a href="about.html" class="active">About</a>
@@ -86,10 +87,24 @@
 </div>
 
 <div class="card" style="margin-top:16px">
+  <h3>Insider flow and reported holdings</h3>
+  <p>The Insider flows page groups rows by reporting-owner CIK and issuer CIK to show whether
+     the same insider both bought and sold the same issuer in the published target year.</p>
+  <p>Reported holding size comes from the SEC <code>sharesOwnedFollowingTransaction</code>
+     / <code>SHRS_OWND_FOLWNG_TRANS</code> field on the latest non-derivative common-equity row
+     for each direct/indirect ownership bucket. It is not a reconstructed brokerage account,
+     and it does not include unfiled holdings or assets outside the issuer.</p>
+</div>
+
+<div class="card" style="margin-top:16px">
   <h3>Automation</h3>
-  <p>A GitHub Actions workflow runs nightly: it fetches new filings, refreshes prices, re-runs the
-     simulation, rebuilds every JSON artifact and commits the result. There is no manual step.
-     A parser self-test runs first and the job aborts before publishing if any check fails.</p>
+  <p>A GitHub Actions workflow runs nightly: it fetches target-year filings from official SEC
+     bulk archives plus the EDGAR daily index, refreshes prices when real market data is reachable,
+     re-runs the simulation, rebuilds every JSON artifact and commits the result. There is no
+     manual data entry step.</p>
+  <p>Hard-coded trade lists and synthetic price paths are intentionally disabled. If a SEC or
+     market-data source is unavailable, the affected rows or paper positions are marked incomplete
+     or <code>no_price</code>; they are never filled by interpolation or estimates.</p>
   <div id="gen" class="sub"></div>
 </div>
 

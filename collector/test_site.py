@@ -33,7 +33,7 @@ def load(rel):
 
 
 PAGES = ["index.html", "paper.html", "trades.html", "companies.html",
-         "insiders.html", "analysis.html", "irregularities.html", "about.html"]
+         "insiders.html", "activity.html", "analysis.html", "irregularities.html", "about.html"]
 
 
 def main() -> int:
@@ -91,6 +91,42 @@ def main() -> int:
             check(f"csv/trades-{y['y']}.csv.gz exists",
                   os.path.exists(os.path.join(ROOT, "data", "csv", f"trades-{y['y']}.csv.gz")))
 
+    print("4b. audit / irregularities contract")
+    a = load("data/audit.json")
+    for k in ("generated", "target_year", "official_sources", "completeness", "counts", "integrity", "assurance"):
+        check(f"audit.{k}", k in a)
+    for k in ("status", "complete", "target_start", "target_end", "blockers"):
+        check(f"audit.completeness.{k}", k in a["completeness"])
+    for k in ("rows", "filings", "companies", "insiders", "with_ticker"):
+        check(f"audit.counts.{k}", k in a["counts"])
+    check("audit does not detect manual/synthetic generator",
+          not a["integrity"].get("manual_data_guard", {}).get("manual_or_synthetic_generators_detected", True))
+    irr = load("data/irregularities.json")
+    check("irregularities is a list", isinstance(irr, list))
+    if irr:
+        need = {"id", "category", "severity", "summary", "details", "rule", "evidence", "review_status"}
+        check("irregularity rows complete", need <= set(irr[0]), str(need - set(irr[0])))
+
+    print("4c. insider_activity.json contract")
+    act = load("data/insider_activity.json")
+    for k in ("generated", "target_year", "summary", "rows", "truncated", "row_count"):
+        check(f"activity.{k}", k in act)
+    for k in ("insider_company_pairs", "buy_sell_pairs", "with_reported_common_shares",
+              "with_priced_holdings", "scope", "full_csv"):
+        check(f"activity.summary.{k}", k in act["summary"])
+    check("insider_activity rows is a list", isinstance(act["rows"], list))
+    check("activity row_count matches summary",
+          act["row_count"] == act["summary"].get("insider_company_pairs"))
+    check("activity rows respect truncation flag",
+          (len(act["rows"]) == act["row_count"]) or act["truncated"])
+    check("insider_activity.csv.gz exists",
+          os.path.exists(os.path.join(ROOT, "data", "insider_activity.csv.gz")))
+    if act["rows"]:
+        need = {"id", "insider", "pcik", "co", "tk", "icik", "buy_n", "sell_n",
+                "buy_v", "sell_v", "net_v", "buy_sell_overlap", "reported_common_shares",
+                "holding_value", "valuation_status", "review_links", "portfolio_scope"}
+        check("activity rows complete", need <= set(act["rows"][0]), str(need - set(act["rows"][0])))
+
     print("5. paper/summary.json contract")
     p = load("data/paper/summary.json")
     for k in ("stake", "counts", "capital", "roi", "gap", "horizons",
@@ -104,6 +140,12 @@ def main() -> int:
         check(f"paper.horizons.{h}", h in p["horizons"])
     for k in ("entry", "exit", "costs"):
         check(f"paper.rule.{k}", k in p["rule"])
+    for k in ("entry_rule_failures", "arithmetic_failures", "price_sources", "line_by_line_review"):
+        check(f"paper.verification.{k}", k in p.get("verification", {}))
+    check("paper entry-rule verification clean",
+          p.get("verification", {}).get("entry_rule_failures", 0) == 0)
+    check("paper arithmetic verification clean",
+          p.get("verification", {}).get("arithmetic_failures", 0) == 0)
     for name, rows in (("by_role", p["by_role"]), ("by_size", p["by_size"])):
         if rows:
             check(f"{name} rows carry stats",
@@ -114,7 +156,8 @@ def main() -> int:
     check("positions is a list", isinstance(pos, list))
     if pos:
         need = {"fd", "entry_d", "tk", "co", "insider", "insider_val", "insider_px",
-                "entry_px", "gap", "last_px", "pnl", "roi", "acc", "status", "icik"}
+                "entry_px", "gap", "last_px", "pnl", "roi", "acc", "status", "icik",
+                "entry_rule_status", "entry_check", "price_src", "edgar_url"}
         missing = need - set(pos[0])
         check("position rows expose every column the UI renders", not missing, str(missing))
         opens = [x for x in pos if x["status"] == "open"]

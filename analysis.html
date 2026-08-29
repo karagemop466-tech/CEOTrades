@@ -17,6 +17,7 @@
         <a href="trades.html">Trades</a>
         <a href="companies.html">Companies</a>
         <a href="insiders.html">Insiders</a>
+        <a href="activity.html">Insider flows</a>
         <a href="analysis.html" class="active">Findings</a>
         <a href="irregularities.html">Irregularities</a>
         <a href="about.html">About</a>
@@ -29,6 +30,7 @@
      real entry prices at the first open after each filing — not from the insiders' own fills.</p>
 </div>
 <div class="card"><h3>Headline findings</h3><div id="findings"></div></div>
+<div class="card" style="margin-top:16px"><h3>Paper-book verification</h3><div id="verify"></div></div>
 
 <h2 class="sec">Return by holding period <small>median return measured from our entry price</small></h2>
 <div class="card tight"><div id="hz"></div></div>
@@ -87,6 +89,14 @@ Promise.all([CT.load('data/paper/summary.json'), CT.load('data/summary.json')])
   document.getElementById('findings').innerHTML = (p.findings || []).map(function (f, i) {
     return '<div class="finding"><div class="n">' + (i + 1) + '</div><div>' + CT.esc(f) + '</div></div>';
   }).join('') || '<div class="empty">No findings yet.</div>';
+  var vf = p.verification || {};
+  var srcs = (vf.price_sources || []).map(function (x) { return CT.esc(x.source) + ': ' + CT.fmtInt(x.n); }).join(' · ');
+  document.getElementById('verify').innerHTML =
+    '<p><strong>Entry rule failures:</strong> ' + CT.fmtInt(vf.entry_rule_failures || 0) +
+    ' · <strong>Arithmetic failures:</strong> ' + CT.fmtInt(vf.arithmetic_failures || 0) +
+    ' · <strong>Open positions checked:</strong> ' + CT.fmtInt(vf.open_positions_checked || 0) + '</p>' +
+    '<p class="sub">' + CT.esc(vf.line_by_line_review || '') + '</p>' +
+    '<p class="sub">Price sources: ' + (srcs || '—') + '</p>';
 
   var hz = Object.keys(LBL).filter(function (k) { return p.horizons && p.horizons[k]; })
     .map(function (k) { var o = Object.assign({}, p.horizons[k]); o.h = LBL[k]; return o; });

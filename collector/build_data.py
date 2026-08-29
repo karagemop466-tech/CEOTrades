@@ -13,6 +13,8 @@ Outputs (all under ./data):
   recent.json             the last RECENT_DAYS of filings (the "tape")
   companies.json          one aggregate row per issuer
   insiders.json           one aggregate row per reporting owner (top INSIDER_CAP)
+  insider_activity.json   buyer/seller overlap + reported holding estimates
+  insider_activity.csv.gz full buyer/seller/holding activity export
   co/<bucket>.json        per-company recent transactions, bucketed by CIK
   csv/trades-YYYY.csv.gz  complete history, one gzipped CSV per year
   paper/summary.json      paper-book headline stats + findings
@@ -43,12 +45,15 @@ SITE_DATA = os.path.join(ROOT, "data")
 sys.path.insert(0, HERE)
 
 import store  # noqa: E402
+import audit as audit_mod  # noqa: E402
+import irregularities as irregularities_mod  # noqa: E402
 
 RECENT_DAYS = 120        # window for the front-page tape
 RECENT_CAP = 6000        # hard cap on tape rows
 COMPANY_CAP = 40         # recent transactions kept per company detail view
 CO_BUCKETS = 64          # per-company files are bucketed to keep file count sane
 INSIDER_CAP = 4000       # insiders published in the browsable table
+INSIDER_ACTIVITY_CAP = 12000  # insider/company pairs published as JSON
 PAPER_BROWSE_CAP = 8000  # positions published as JSON (full set is in the CSV)
 
 
@@ -69,6 +74,22 @@ def bucket_of(cik: str) -> int:
     return (int(s) % CO_BUCKETS) if s else 0
 
 
+def edgar_url(acc: str, issuer_cik: str = "") -> str:
+    """SEC filing-index URL for manual review.
+
+    Ownership-form accession prefixes often identify the reporting owner or
+    filing agent rather than the issuer, so prefer the parsed issuer CIK.
+    """
+    a = "".join(ch for ch in str(acc or "") if ch.isdigit() or ch == "-")
+    if not a:
+        return ""
+    plain = a.replace("-", "")
+    cik = "".join(ch for ch in str(issuer_cik or "") if ch.isdigit()).lstrip("0")
+    if not cik:
+        cik = plain[:10].lstrip("0")
+    return f"https://www.sec.gov/Archives/edgar/data/{cik}/{plain}/{a}-index.htm"
+
+
 # ---------------------------------------------------------------------------
 # Pass 1 — stream every row, build aggregates, harvest paper-trade signals
 # ---------------------------------------------------------------------------
@@ -85,7 +106,14 @@ def _new_ins():
             "first": "", "last": ""}
 
 
-def collect(data_dir: str):
+def collect(data_dir: str, target_year: int | None = None):
+    """Aggregate rows from the store.
+
+    When target_year is supplied, only rows whose SEC filing date falls in that
+    calendar year are published. Rows outside the target year are ignored rather
+    than carried into the UI, which prevents a 2025 build from accidentally
+    showing 2026 sample data.
+    """
     companies: dict[str, dict] = {}
     insiders: dict[str, dict] = {}
     by_code = defaultdict(lambda: {"n": 0, "v": 0.0})
@@ -102,13 +130,17 @@ def collect(data_dir: str):
     recent: list[dict] = []
     latest: list[dict] = []
     signals: dict[tuple, dict] = {}
+    activity: dict[tuple, dict] = {}
+    activity_tickers: set[str] = set()
 
     cutoff = (datetime.now(timezone.utc) - timedelta(days=RECENT_DAYS)).strftime("%Y-%m-%d")
     first_fd, last_fd = "9999-99-99", ""
 
-    for r in store.iter_rows(data_dir):
-        totals["n"] += 1
+    for row_idx, r in enumerate(store.iter_rows(data_dir), 1):
         fd = r.get("fd") or ""
+        if target_year and (len(fd) < 4 or fd[:4] != str(target_year)):
+            continue
+        totals["n"] += 1
         code = (r.get("code") or "?")
         side = r.get("side") or "other"
         v = r.get("val") or 0.0
@@ -222,6 +254,96 @@ def collect(data_dir: str):
                 if fd > p["last"]:
                     p["last"] = fd
 
+        # ---- per insider/company activity and reported holdings ----
+        # These rows answer: did the same insider both buy and sell this issuer,
+        # and what is the latest as-filed post-transaction holding we can quote?
+        # The holding estimate is deliberately narrow: it uses SEC
+        # SHRS_OWND_FOLWNG_TRANS values from the latest non-derivative common
+        # equity row per direct/indirect ownership bucket. Missing values remain
+        # null; nothing is inferred from prior trades.
+        owner_key = (r.get("pcik") or r.get("in") or "").strip()
+        issuer_key = (cik or tk or r.get("co") or "").strip()
+        if owner_key and issuer_key:
+            akey = (owner_key, issuer_key)
+            a = activity.get(akey)
+            if a is None:
+                a = activity[akey] = {
+                    "insider": r.get("in") or "", "pcik": r.get("pcik") or "",
+                    "co": r.get("co") or "", "tk": tk, "icik": cik,
+                    "rel": r.get("rel") or "", "title": r.get("title") or "",
+                    "n": 0, "buy_n": 0, "sell_n": 0, "other_n": 0,
+                    "buy_sh": 0.0, "sell_sh": 0.0,
+                    "buy_v": 0.0, "sell_v": 0.0, "other_v": 0.0,
+                    "first": "", "last": "", "first_buy": "", "last_buy": "",
+                    "first_sell": "", "last_sell": "", "filings": {},
+                    "holdings": {}, "recent": [],
+                }
+            if r.get("in"):
+                a["insider"] = r.get("in") or a["insider"]
+            if r.get("pcik") and not a["pcik"]:
+                a["pcik"] = r.get("pcik") or ""
+            if r.get("co"):
+                a["co"] = r.get("co") or a["co"]
+            if tk and not a["tk"]:
+                a["tk"] = tk
+            if cik and not a["icik"]:
+                a["icik"] = cik
+            if r.get("rel") and r.get("rel") != "Unknown":
+                a["rel"] = r.get("rel") or a["rel"]
+            if r.get("title") and not a["title"]:
+                a["title"] = r.get("title") or ""
+            a["n"] += 1
+            if fd:
+                if not a["first"] or fd < a["first"]:
+                    a["first"] = fd
+                if fd > a["last"]:
+                    a["last"] = fd
+            if acc:
+                a["filings"][acc] = {"acc": acc, "icik": cik, "fd": fd,
+                                      "form": r.get("form") or "",
+                                      "amend": r.get("amend") or 0}
+            if is_buy:
+                a["buy_n"] += 1
+                a["buy_sh"] += float(r.get("sh") or 0)
+                a["buy_v"] += v
+                if fd:
+                    if not a["first_buy"] or fd < a["first_buy"]:
+                        a["first_buy"] = fd
+                    if fd > a["last_buy"]:
+                        a["last_buy"] = fd
+            elif is_sell:
+                a["sell_n"] += 1
+                a["sell_sh"] += float(r.get("sh") or 0)
+                a["sell_v"] += v
+                if fd:
+                    if not a["first_sell"] or fd < a["first_sell"]:
+                        a["first_sell"] = fd
+                    if fd > a["last_sell"]:
+                        a["last_sell"] = fd
+            else:
+                a["other_n"] += 1
+                a["other_v"] += v
+            a["recent"].append(compact(r))
+            if len(a["recent"]) > 25:
+                a["recent"].sort(key=lambda x: (x.get("fd") or "", x.get("td") or ""), reverse=True)
+                del a["recent"][10:]
+
+            af = r.get("af")
+            if tk and af is not None and af >= 0 and not r.get("der") and is_common_equity(r.get("sec") or ""):
+                activity_tickers.add(tk)
+                hkey = ((r.get("sec") or "Common equity").strip().lower(),
+                        r.get("di") or "", (r.get("nature") or "").strip().lower())
+                marker = (fd or "", r.get("td") or "", acc or "", row_idx)
+                old = a["holdings"].get(hkey)
+                if old is None or marker >= old["marker"]:
+                    a["holdings"][hkey] = {
+                        "security": r.get("sec") or "Common equity",
+                        "direct_indirect": r.get("di") or "",
+                        "nature": r.get("nature") or "",
+                        "shares": float(af), "fd": fd, "td": r.get("td") or "",
+                        "acc": acc, "icik": cik, "marker": marker,
+                    }
+
         # ---- tape ----
         # Rows inside the recent window, plus an always-populated fallback so
         # the tape is never empty for a dataset whose latest filing is old.
@@ -270,6 +392,7 @@ def collect(data_dir: str):
         "by_rel": by_rel, "by_side": by_side, "by_form": by_form,
         "monthly": monthly, "yearly": yearly, "totals": totals,
         "filings": len(accs), "recent": recent, "signals": signals,
+        "activity": activity, "activity_tickers": activity_tickers,
         "first_fd": "" if first_fd == "9999-99-99" else first_fd,
         "last_fd": last_fd,
     }
@@ -357,8 +480,126 @@ def write_insiders(agg, out_dir):
     return total
 
 
-def write_year_csvs(data_dir, out_dir):
-    """Publish the complete history as one gzipped CSV per year."""
+def latest_mark(bars, asof: str):
+    """Latest close at or before asof from a validated daily-bar list."""
+    if not bars:
+        return None
+    usable = [b for b in bars if b.get("d") and b["d"] <= asof and b.get("c")]
+    if not usable:
+        return None
+    last = usable[-1]
+    c = last.get("c")
+    if not c or c <= 0:
+        return None
+    return {"last_d": last["d"], "last_px": r4(float(c))}
+
+
+def write_insider_activity(agg, out_dir, marks_by_tk, target_year: int | None = None):
+    """Publish buyer/seller overlap and reported-holding tracking.
+
+    This is not a reconstructed brokerage portfolio. It is a conservative
+    ledger derived only from SEC rows: buys/sells are code P/S totals, and
+    reported shares are the latest as-filed post-transaction ownership amounts
+    available for each insider/issuer/security/directness bucket.
+    """
+    rows = []
+    for key, a in agg.get("activity", {}).items():
+        holdings = []
+        for h in a.get("holdings", {}).values():
+            hh = {k: v for k, v in h.items() if k != "marker"}
+            hh["edgar_url"] = edgar_url(hh.get("acc"), hh.get("icik"))
+            holdings.append(hh)
+        holdings.sort(key=lambda h: (h.get("fd") or "", h.get("td") or "", h.get("acc") or ""), reverse=True)
+        has_reported_shares = bool(holdings)
+        reported_shares = sum(float(h.get("shares") or 0) for h in holdings)
+        mark = marks_by_tk.get(a.get("tk") or "") or {}
+        holding_value = None
+        if has_reported_shares and mark.get("last_px") is not None:
+            holding_value = r2(reported_shares * float(mark["last_px"]))
+        filings = sorted(a.get("filings", {}).values(),
+                         key=lambda f: (f.get("fd") or "", f.get("acc") or ""), reverse=True)
+        review_links = [{**f, "edgar_url": edgar_url(f.get("acc"), f.get("icik"))}
+                        for f in filings[:10]]
+        buy_sell_overlap = a.get("buy_n", 0) > 0 and a.get("sell_n", 0) > 0
+        if has_reported_shares:
+            valuation_status = "priced" if holding_value is not None else "shares_only_no_market_price"
+        else:
+            valuation_status = "no_reported_post_transaction_common_shares"
+        row = {
+            "id": f"{a.get('pcik') or key[0]}:{a.get('icik') or key[1]}",
+            "target_year": target_year,
+            "insider": a.get("insider") or "", "pcik": a.get("pcik") or "",
+            "co": a.get("co") or "", "tk": a.get("tk") or "",
+            "icik": a.get("icik") or "", "rel": a.get("rel") or "Unknown",
+            "title": a.get("title") or "", "n": a.get("n", 0),
+            "buy_n": a.get("buy_n", 0), "sell_n": a.get("sell_n", 0),
+            "other_n": a.get("other_n", 0),
+            "buy_sh": r4(a.get("buy_sh", 0.0)), "sell_sh": r4(a.get("sell_sh", 0.0)),
+            "buy_v": r2(a.get("buy_v", 0.0)), "sell_v": r2(a.get("sell_v", 0.0)),
+            "net_v": r2(a.get("buy_v", 0.0) - a.get("sell_v", 0.0)),
+            "buy_sell_overlap": buy_sell_overlap,
+            "first": a.get("first") or "", "last": a.get("last") or "",
+            "first_buy": a.get("first_buy") or "", "last_buy": a.get("last_buy") or "",
+            "first_sell": a.get("first_sell") or "", "last_sell": a.get("last_sell") or "",
+            "reported_common_shares": r4(reported_shares) if has_reported_shares else None,
+            "holding_groups": len(holdings), "latest_holding_fd": holdings[0].get("fd") if holdings else "",
+            "mark_d": mark.get("last_d"), "mark_px": mark.get("last_px"),
+            "holding_value": holding_value, "price_src": mark.get("price_src"),
+            "valuation_status": valuation_status,
+            "portfolio_scope": "SEC as-filed latest sharesOwnedFollowingTransaction for non-derivative common-equity rows; not a full outside brokerage portfolio.",
+            "review_links": review_links,
+            "holdings": holdings[:8],
+        }
+        rows.append(row)
+
+    rows.sort(key=lambda r: (not r["buy_sell_overlap"], -(abs(r["net_v"] or 0)), -(r["n"] or 0), r.get("insider") or ""))
+    total_holding_value = r2(sum(r.get("holding_value") or 0 for r in rows))
+    summary = {
+        "target_year": target_year,
+        "insider_company_pairs": len(rows),
+        "buy_sell_pairs": sum(1 for r in rows if r["buy_sell_overlap"]),
+        "with_reported_common_shares": sum(1 for r in rows if r.get("reported_common_shares") is not None),
+        "with_priced_holdings": sum(1 for r in rows if r.get("holding_value") is not None),
+        "reported_holding_value_priced": total_holding_value,
+        "scope": "Buyer/seller overlap and holdings are computed only from stored SEC Form 3/4/5 fields; missing SEC rows or missing market bars remain explicit gaps.",
+        "full_csv": "data/insider_activity.csv.gz",
+    }
+    payload = {
+        "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "target_year": target_year,
+        "summary": summary,
+        "rows": rows[:INSIDER_ACTIVITY_CAP],
+        "truncated": len(rows) > INSIDER_ACTIVITY_CAP,
+        "row_count": len(rows),
+    }
+    jdump(payload, os.path.join(out_dir, "insider_activity.json"))
+
+    cols = ["id", "target_year", "insider", "pcik", "co", "tk", "icik", "rel", "title",
+            "n", "buy_n", "sell_n", "other_n", "buy_sh", "sell_sh", "buy_v", "sell_v",
+            "net_v", "buy_sell_overlap", "first", "last", "first_buy", "last_buy",
+            "first_sell", "last_sell", "reported_common_shares", "holding_groups",
+            "latest_holding_fd", "mark_d", "mark_px", "holding_value", "price_src",
+            "valuation_status", "portfolio_scope"]
+    buf = io.BytesIO()
+    with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=9, mtime=0) as gz:
+        txt = io.TextIOWrapper(gz, encoding="utf-8", newline="")
+        w = csv.DictWriter(txt, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        for r in rows:
+            w.writerow({k: r.get(k) for k in cols})
+        txt.flush()
+        txt.detach()
+    with open(os.path.join(out_dir, "insider_activity.csv.gz"), "wb") as f:
+        f.write(buf.getvalue())
+    return payload
+
+
+def write_year_csvs(data_dir, out_dir, target_year: int | None = None):
+    """Publish gzipped CSV exports by filing year.
+
+    A target-year build exports only that year; otherwise the complete local
+    history is exported one file per year.
+    """
     cdir = os.path.join(out_dir, "csv")
     os.makedirs(cdir, exist_ok=True)
     for fn in os.listdir(cdir):
@@ -371,6 +612,8 @@ def write_year_csvs(data_dir, out_dir):
         for r in store.iter_rows(data_dir):
             y = (r.get("fd") or "")[:4]
             if not y.isdigit():
+                continue
+            if target_year and y != str(target_year):
                 continue
             h = handles.get(y)
             if h is None:
@@ -391,7 +634,7 @@ def write_year_csvs(data_dir, out_dir):
     return dict(counts)
 
 
-def write_summary(agg, out_dir, paper_counts):
+def write_summary(agg, out_dir, paper_counts, target_year: int | None = None):
     t = agg["totals"]
     months = sorted(agg["monthly"].items())
     code_rows = sorted(
@@ -403,6 +646,7 @@ def write_summary(agg, out_dir, paper_counts):
         key=lambda x: x["y"])
     summary = {
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "target_year": target_year,
         "range": {"from": agg["first_fd"], "to": agg["last_fd"]},
         "counts": {
             "trades": t["n"], "filings": agg["filings"],
@@ -660,7 +904,11 @@ def simulate(sig, bars, asof):
                 "entry_px": None, "shares": None, "last_d": None, "last_px": None,
                 "mtm": None, "pnl": None, "roi": None, "gap": None,
                 "r1": None, "r5": None, "r21": None, "r63": None, "r252": None,
-                "delay_fd_entry": None, "hold": None})
+                "delay_fd_entry": None, "hold": None,
+                "entry_rule": "first_regular_session_open_strictly_after_sec_filing_date",
+                "entry_rule_status": "no_price",
+                "entry_check": "No daily market bars available; no entry price was inferred.",
+                "edgar_url": edgar_url(sig.get("acc"), sig.get("icik"))})
     if sig.get("td") and sig.get("fd"):
         try:
             out["delay_td_fd"] = (date.fromisoformat(sig["fd"])
@@ -674,12 +922,18 @@ def simulate(sig, bars, asof):
     i = next_open_after(usable, sig["fd"])
     if i is None:
         out["status"] = "awaiting_entry"
+        out["entry_rule_status"] = "awaiting_entry"
+        out["entry_check"] = "Bars exist, but no regular-session open strictly after the SEC filing date is available as of the build date."
         return out
     entry = usable[i]
     epx = float(entry["o"])
     sh = STAKE / epx
+    verified_entry = entry["d"] > sig["fd"] and epx > 0
     out.update({"status": "open", "entry_d": entry["d"], "entry_px": r4(epx),
-                "shares": r4(sh)})
+                "shares": r4(sh),
+                "entry_rule_status": "verified" if verified_entry else "invalid",
+                "entry_check": "Entry date is strictly after the SEC filing date and uses that session's open."
+                if verified_entry else "Entry rule violation: entry date is not strictly after filing date or open price is invalid."})
     try:
         out["delay_fd_entry"] = (date.fromisoformat(entry["d"])
                                  - date.fromisoformat(sig["fd"])).days
@@ -765,6 +1019,20 @@ def analyze(positions):
 
     deployed = sum(p["stake"] for p in opens)
     value = sum(p["mtm"] for p in opens if p.get("mtm") is not None)
+    price_sources = defaultdict(int)
+    entry_rule_failures = 0
+    arithmetic_failures = 0
+    for p in positions:
+        price_sources[p.get("price_src") or "none"] += 1
+        if p.get("status") == "open":
+            if not (p.get("entry_d") and p.get("fd") and p["entry_d"] > p["fd"] and (p.get("entry_px") or 0) > 0):
+                entry_rule_failures += 1
+            if p.get("shares") is not None and p.get("entry_px") is not None:
+                if abs((p["shares"] * p["entry_px"]) - p.get("stake", STAKE)) > 0.25:
+                    arithmetic_failures += 1
+            if p.get("mtm") is not None and p.get("shares") is not None and p.get("last_px") is not None:
+                if abs(p["mtm"] - p["shares"] * p["last_px"]) > 0.25:
+                    arithmetic_failures += 1
 
     def tbl(d, key):
         rows = [{key: k, **stats(v)} for k, v in d.items()]
@@ -773,8 +1041,9 @@ def analyze(positions):
 
     ranked = sorted(opens, key=lambda p: p["roi"], reverse=True)
     keep = ("id", "tk", "co", "insider", "rel", "title", "fd", "td", "entry_d",
-            "entry_px", "insider_px", "insider_sh", "insider_val", "shares",
-            "last_px", "roi", "pnl", "mtm", "gap", "acc")
+            "entry_px", "entry_rule_status", "price_src", "insider_px", "insider_sh",
+            "insider_val", "shares", "last_px", "roi", "pnl", "mtm", "gap",
+            "acc", "icik", "edgar_url")
 
     def slim(p):
         return {k: p.get(k) for k in keep}
@@ -791,6 +1060,15 @@ def analyze(positions):
             "deployed": r2(deployed), "value": r2(value),
             "pnl": r2(value - deployed),
             "roi": r4(value / deployed - 1.0) if deployed else None,
+        },
+        "verification": {
+            "entry_rule_failures": entry_rule_failures,
+            "arithmetic_failures": arithmetic_failures,
+            "open_positions_checked": len(opens),
+            "price_sources": sorted(({"source": k, "n": v} for k, v in price_sources.items()),
+                                    key=lambda x: (-x["n"], x["source"])),
+            "line_by_line_review": "Each paper row carries SEC accession/issuer CIK, EDGAR filing URL, entry rule status, price source, entry date, entry open, latest close, ROI and arithmetic fields.",
+            "portfolio_warning": "Reported holdings use SEC post-transaction ownership fields only; no outside brokerage accounts or unfiled trades are inferred.",
         },
         "roi": stats([p["roi"] for p in opens]),
         "gap": stats([p["gap"] for p in opens if p.get("gap") is not None]),
@@ -827,7 +1105,12 @@ def findings(a, opens):
     f = []
     n = a["counts"]["open"]
     if not n:
-        return ["No paper positions have been opened yet."]
+        missing = a["counts"].get("no_price", 0)
+        awaiting = a["counts"].get("awaiting_entry", 0)
+        msg = "No paper positions have been opened yet."
+        if missing or awaiting:
+            msg += f" Signals awaiting usable prices: no_price={missing:,}, awaiting_entry={awaiting:,}."
+        return [msg]
     roi = a["roi"]
     f.append(
         f"{n:,} simulated $10,000 positions are open, deploying "
@@ -903,11 +1186,12 @@ def write_paper(positions, out_dir):
     jdump(equity_curve(positions), os.path.join(pdir, "equity.json"))
 
     ordered = sorted(positions, key=lambda p: (p.get("fd") or ""), reverse=True)
-    cols = ["id", "status", "fd", "td", "entry_d", "tk", "co", "insider", "rel",
-            "title", "sec", "lots", "insider_sh", "insider_px", "insider_val",
-            "entry_px", "gap", "shares", "stake", "last_d", "last_px", "mtm",
-            "pnl", "roi", "r1", "r5", "r21", "r63", "r252", "delay_td_fd",
-            "delay_fd_entry", "hold", "acc", "form", "amend", "icik", "pcik"]
+    cols = ["id", "status", "entry_rule_status", "fd", "td", "entry_d", "tk", "co",
+            "insider", "rel", "title", "sec", "lots", "insider_sh", "insider_px",
+            "insider_val", "entry_px", "gap", "shares", "stake", "last_d", "last_px",
+            "mtm", "pnl", "roi", "r1", "r5", "r21", "r63", "r252", "delay_td_fd",
+            "delay_fd_entry", "hold", "price_src", "entry_check", "edgar_url", "acc",
+            "form", "amend", "icik", "pcik"]
     jdump([{k: p.get(k) for k in cols} for p in ordered[:PAPER_BROWSE_CAP]],
           os.path.join(pdir, "positions.json"))
 
@@ -934,18 +1218,29 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Build CEOTrades site data.")
     ap.add_argument("--data", default=DATA_IN)
     ap.add_argument("--out", default=SITE_DATA)
+    ap.add_argument("--year", type=int, default=0,
+                    help="publish only this SEC filing year (0 = all local rows)")
     ap.add_argument("--offline", action="store_true",
                     help="use only cached prices (no network)")
     ap.add_argument("--max-tickers", type=int, default=0,
                     help="limit tickers priced this run (0 = no limit)")
+    ap.add_argument("--price-budget-min", type=float,
+                    default=float(os.environ.get("CEOTRADES_PRICE_MIN", "0")),
+                    help="maximum minutes to spend fetching market prices; 0 = no explicit limit")
+    ap.add_argument("--audit-year", type=int, default=0,
+                    help="target year for completeness/audit artifacts (default: --year or current year)")
     args = ap.parse_args()
+    target_year = args.year or None
+    audit_year = args.audit_year or target_year or audit_mod.asof_today().year
 
     if not store.shard_files(args.data):
         log(f"No trade shards found in {args.data}. Run bulk_backfill.py first.")
         return 1
 
     log("Pass 1: streaming trade store …")
-    agg = collect(args.data)
+    if target_year:
+        log(f"  filtering to SEC filing year {target_year}")
+    agg = collect(args.data, target_year=target_year)
     t = agg["totals"]
     log(f"  {t['n']:,} rows | {agg['filings']:,} filings | "
         f"{len(agg['companies']):,} companies | {len(agg['insiders']):,} insiders")
@@ -968,20 +1263,39 @@ def main() -> int:
     by_tk = defaultdict(list)
     for s in sigs:
         by_tk[s["tk"]].append(s)
-    tickers = sorted(by_tk)
+    paper_tickers = sorted(by_tk)
+    holding_tickers = sorted(t for t in agg.get("activity_tickers", set()) if valid_ticker(t))
+    all_tickers = paper_tickers + [t for t in holding_tickers if t not in by_tk]
+    tickers = all_tickers
     if args.max_tickers:
         tickers = tickers[:args.max_tickers]
-    log(f"  {len(tickers):,} unique tickers to price")
+    log(f"  {len(tickers):,} unique tickers to price "
+        f"({len(paper_tickers):,} paper, {len(holding_tickers):,} with reported holdings)")
 
-    asof = date.today().isoformat()
+    asof = audit_mod.asof_today().isoformat()
     positions, priced, nosrc = [], 0, 0
+    marks_by_tk = {}
+    priced_tickers = set()
+    price_deadline = None
+    if args.price_budget_min and args.price_budget_min > 0:
+        price_deadline = time.monotonic() + args.price_budget_min * 60.0
     for i, tk in enumerate(tickers, 1):
-        bars, src = get_bars(tk, offline=args.offline)
+        if price_deadline is not None and time.monotonic() > price_deadline:
+            bars, src = [], "price_budget_exhausted"
+        else:
+            bars, src = get_bars(tk, offline=args.offline)
+        priced_tickers.add(tk)
+        mark = latest_mark(bars, asof)
+        if mark:
+            mark["price_src"] = src
+            marks_by_tk[tk] = mark
+        else:
+            marks_by_tk[tk] = {"price_src": src}
         if bars:
             priced += 1
         else:
             nosrc += 1
-        for s in by_tk[tk]:
+        for s in by_tk.get(tk, []):
             p = simulate(s, bars, asof)
             p["price_src"] = src
             positions.append(p)
@@ -989,11 +1303,22 @@ def main() -> int:
             log(f"  priced {i}/{len(tickers)} tickers "
                 f"({priced} with bars, {nosrc} without)")
 
+    # If --max-tickers clipped the pricing list, do not silently drop paper
+    # signals. Publish them as no_price/max_tickers_skipped so the full signal
+    # count remains visible and auditable.
+    for tk in [t for t in paper_tickers if t not in priced_tickers]:
+        marks_by_tk.setdefault(tk, {"price_src": "max_tickers_skipped"})
+        for s in by_tk[tk]:
+            p = simulate(s, [], asof)
+            p["price_src"] = "max_tickers_skipped"
+            positions.append(p)
+
     log("Pass 3: writing site data …")
     os.makedirs(args.out, exist_ok=True)
     paper = write_paper(positions, args.out)
     nco, nb = write_companies(agg, args.out)
     nins = write_insiders(agg, args.out)
+    activity = write_insider_activity(agg, args.out, marks_by_tk, target_year=target_year)
     jdump(agg["recent"], os.path.join(args.out, "recent.json"))
 
     # data/trades.csv — plain-text export of the recent tape. Kept because the
@@ -1005,13 +1330,22 @@ def main() -> int:
         w.writeheader()
         for r in agg["recent"]:
             w.writerow({k: r.get(k) for k in COMPACT_KEYS})
-    ycounts = write_year_csvs(args.data, args.out)
-    summary = write_summary(agg, args.out, paper["counts"])
+    ycounts = write_year_csvs(args.data, args.out, target_year=target_year)
+    summary = write_summary(agg, args.out, paper["counts"], target_year=target_year)
+    report_path = (os.path.join(ROOT, "INSIDER_TRADING_FORENSIC_REPORT.md")
+                   if os.path.abspath(args.out) == os.path.abspath(SITE_DATA) else None)
+    audit = audit_mod.write_audit(args.data, args.out, audit_year, report_path)
+    flags = irregularities_mod.write_irregularities(args.data, args.out, audit_year, audit)
 
     log(f"  companies.json: {nco:,} rows ({nb} detail buckets)")
     log(f"  insiders.json:  {nins:,} insiders aggregated")
+    log(f"  activity:       {activity['row_count']:,} insider/company pair(s), "
+        f"{activity['summary']['buy_sell_pairs']:,} with both buys and sells")
     log(f"  recent.json:    {len(agg['recent']):,} rows")
     log(f"  csv/:           {sum(ycounts.values()):,} rows across {len(ycounts)} years")
+    log(f"  audit:          {audit['completeness']['status']} | "
+        f"{audit['integrity']['row_issues']:,} row issues")
+    log(f"  irregularities: {len(flags):,} automated review flag(s)")
     log(f"  paper:          {paper['counts']['open']:,} open positions, "
         f"ROI {paper['capital']['roi']}")
     log(f"Done. {summary['counts']['trades']:,} transactions published.")

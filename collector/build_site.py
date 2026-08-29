@@ -22,14 +22,17 @@ Time-budgeted: the backfill stops before the workflow's limit and the
 remaining quarters are picked up by the next scheduled run.
 
 Environment:
-  CEOTRADES_BACKFILL_MIN   minutes to spend on the historical backfill (default 120)
-  CEOTRADES_SKIP_BACKFILL  set to "1" to skip step 1
-  CEOTRADES_PRICE_MIN      minutes budget for price fetching (default 120)
+  CEOTRADES_TARGET_YEAR    target filing year to publish (default 2025 for the current project)
+  CEOTRADES_BACKFILL_MIN   legacy all-history backfill minutes when CEOTRADES_TARGET_YEAR=0
+  CEOTRADES_SKIP_BACKFILL  set to "1" to skip legacy all-history backfill
+  CEOTRADES_PRICE_MIN      optional minutes budget for price fetching (target mode defaults to offline/no fabricated prices)
 """
 from __future__ import annotations
 
+import gzip
 import json
 import os
+import subprocess
 import sys
 import time
 from datetime import date
@@ -43,6 +46,16 @@ STATE = os.path.join(DATA, "backfill.json")
 import build_data  # noqa: E402
 import bulk_backfill as bb  # noqa: E402
 import store  # noqa: E402
+
+
+def _target_year() -> int:
+    raw = os.environ.get("CEOTRADES_TARGET_YEAR", "2025").strip()
+    if raw in ("", "0", "all", "ALL"):
+        return 0
+    try:
+        return int(raw)
+    except ValueError:
+        return 2025
 
 
 def log(m):
@@ -177,6 +190,10 @@ def write_empty_outputs():
         "stake": build_data.STAKE,
         "counts": {"signals": 0, "open": 0, "awaiting_entry": 0, "no_price": 0},
         "capital": {"deployed": 0, "value": 0, "pnl": 0, "roi": None},
+        "verification": {"entry_rule_failures": 0, "arithmetic_failures": 0,
+                         "open_positions_checked": 0, "price_sources": [],
+                         "line_by_line_review": "No paper rows were available.",
+                         "portfolio_warning": "No holdings were available."},
         "roi": build_data.stats([]), "gap": build_data.stats([]),
         "horizons": {h: build_data.stats([]) for h in
                      ("r1", "r5", "r21", "r63", "r252")},
@@ -190,18 +207,69 @@ def write_empty_outputs():
         "generated": stamp})
     w("paper/positions.json", [])
     w("paper/equity.json", [])
+    w("audit.json", {
+        "generated": stamp, "target_year": date.today().year, "asof": stamp,
+        "official_sources": [],
+        "completeness": {"status": "incomplete_or_unproven", "complete": False,
+                         "target_start": "", "target_end": "", "observed_from": "",
+                         "observed_to": "", "target_observed_from": "",
+                         "target_observed_to": "", "missing_months": [],
+                         "candidate_missing_business_days": [],
+                         "candidate_missing_business_days_truncated": False,
+                         "blockers": ["No trade shards were available."],
+                         "note": "No data collected yet."},
+        "counts": {"rows": 0, "target_year_rows": 0, "filings": 0,
+                   "target_year_filings": 0, "companies": 0, "insiders": 0,
+                   "with_ticker": 0, "without_ticker": 0, "with_price": 0,
+                   "derivative_rows": 0},
+        "value": {"total_abs_reported": 0, "code_p_buy": 0,
+                  "code_s_sell": 0, "net_p_minus_s": 0},
+        "by_code": [],
+        "integrity": {"row_hash_sha256": "", "row_issues": 0,
+                      "by_issue": [], "by_severity": [], "issue_examples": [],
+                      "manual_data_guard": {"manual_or_synthetic_generators_detected": False,
+                                             "suspects": [], "policy": ""}},
+        "shards": [], "assurance": {"remote_refetch": "not_performed_by_default"}})
+    w("irregularities.json", [])
+    w("insider_activity.json", {
+        "generated": stamp, "target_year": _target_year() or date.today().year,
+        "summary": {"target_year": _target_year() or date.today().year,
+                    "insider_company_pairs": 0, "buy_sell_pairs": 0,
+                    "with_reported_common_shares": 0, "with_priced_holdings": 0,
+                    "reported_holding_value_priced": 0,
+                    "scope": "No data collected yet.",
+                    "full_csv": "data/insider_activity.csv.gz"},
+        "rows": [], "truncated": False, "row_count": 0})
+    with gzip.GzipFile(filename=os.path.join(out, "insider_activity.csv.gz"), mode="wb", compresslevel=9, mtime=0) as gz:
+        gz.write(b"id,target_year,insider,pcik,co,tk,icik,rel,title,n,buy_n,sell_n,other_n,buy_sh,sell_sh,buy_v,sell_v,net_v,buy_sell_overlap,first,last,first_buy,last_buy,first_sell,last_sell,reported_common_shares,holding_groups,latest_holding_fd,mark_d,mark_px,holding_value,price_src,valuation_status,portfolio_scope\n")
     with open(os.path.join(out, "trades.csv"), "w", encoding="utf-8") as f:
         f.write(",".join(build_data.COMPACT_KEYS) + "\n")
 
 
 def main() -> int:
-    if os.environ.get("CEOTRADES_SKIP_BACKFILL") != "1":
-        try:
-            backfill(float(os.environ.get("CEOTRADES_BACKFILL_MIN", "120")))
-        except Exception as e:  # noqa: BLE001
-            log(f"! backfill aborted: {e} — continuing to the site build")
+    target = _target_year()
+
+    if target:
+        # Target-year mode is used for the no-hallucination corpus builds. It
+        # gathers the requested year from official SEC sources and publishes only
+        # that filing year, so stale rows from another year cannot leak into the
+        # site. Price fetching is intentionally offline by default here: absent
+        # market bars become no_price instead of synthetic paper P&L.
+        log(f"Target-year SEC collection: {target}")
+        cmd = [sys.executable, os.path.join(HERE, "collect_ytd.py"),
+               "--year", str(target), "--replace-year", "--rate", "8"]
+        rc = subprocess.call(cmd)
+        if rc != 0:
+            log(f"! target-year collection failed with exit code {rc}")
+            return rc
     else:
-        log("Backfill skipped (CEOTRADES_SKIP_BACKFILL=1)")
+        if os.environ.get("CEOTRADES_SKIP_BACKFILL") != "1":
+            try:
+                backfill(float(os.environ.get("CEOTRADES_BACKFILL_MIN", "120")))
+            except Exception as e:  # noqa: BLE001
+                log(f"! backfill aborted: {e} — continuing to the site build")
+        else:
+            log("Backfill skipped (CEOTRADES_SKIP_BACKFILL=1)")
 
     shards = store.shard_files(DATA)
     log(f"\nStore: {len(shards)} shard(s)")
@@ -212,6 +280,12 @@ def main() -> int:
 
     log("\nBuilding site data …")
     sys.argv = ["build_data"]
+    if target:
+        sys.argv += ["--year", str(target), "--audit-year", str(target)]
+        if os.environ.get("CEOTRADES_OFFLINE") == "1":
+            sys.argv.append("--offline")
+        if "CEOTRADES_PRICE_MIN" not in os.environ:
+            sys.argv += ["--price-budget-min", "30"]
     return build_data.main()
 
 

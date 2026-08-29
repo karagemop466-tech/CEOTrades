@@ -3,27 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Irregularities & Forensic Review · CEOTrades</title>
-<meta name="description" content="Forensic irregularity review of SEC Form 4 insider transactions, verified line-by-line from official EDGAR filings.">
+<title>Irregularities · CEOTrades</title>
+<meta name="description" content="Automated review flags for SEC insider-trade data quality and transaction patterns.">
 <link rel="stylesheet" href="css/site.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚠️</text></svg>">
-<style>
-.irr-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: 18px; box-shadow: var(--shadow); }
-.irr-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }
-.irr-title { margin: 0; font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.badge { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
-.badge.high { background: var(--sell-soft); color: var(--sell); }
-.badge.medium { background: var(--warn-soft); color: var(--warn); }
-.badge.info { background: var(--acc-soft); color: var(--acc); }
-.badge.low { background: var(--neutral-soft); color: var(--neutral); }
-.irr-summary { font-weight: 600; margin: 0 0 10px; color: var(--ink); }
-.irr-details { color: var(--muted); margin: 0 0 14px; font-size: 14px; }
-.evidence-box { background: #f8fafc; border-left: 3px solid var(--acc); padding: 12px 16px; border-radius: 0 8px 8px 0; margin-top: 10px; }
-.evidence-box h4 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink); }
-.evidence-list { margin: 0; padding-left: 20px; font-size: 13px; color: #334155; }
-.evidence-list li { margin-bottom: 5px; }
-.sec-link { font-family: monospace; font-size: 12.5px; background: #edf2f7; padding: 2px 6px; border-radius: 4px; }
-</style>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 </head>
 <body>
 <header class="top"><div class="wrap nav">
@@ -34,6 +17,7 @@
         <a href="trades.html">Trades</a>
         <a href="companies.html">Companies</a>
         <a href="insiders.html">Insiders</a>
+        <a href="activity.html">Insider flows</a>
         <a href="analysis.html">Findings</a>
         <a href="irregularities.html" class="active">Irregularities</a>
         <a href="about.html">About</a>
@@ -41,104 +25,108 @@
 </div></header>
 <main class="wrap">
 <div class="page-head">
-  <h1>Forensic Irregularity & Audit Review</h1>
-  <p>Systematic screening of SEC Form 4 and Form 5 filings for behavioral, timing, and structural anomalies.
-     Every item below is verified line-by-line from official SEC EDGAR primary source XML documents — strictly no hallucinations.</p>
+  <h1>Irregularities</h1>
+  <p>Automated review flags generated from the SEC-derived local store. These are not legal
+     conclusions. They identify coverage gaps, data-quality issues and transaction patterns that
+     should be reviewed against the linked SEC accessions before publication or investment use.</p>
 </div>
 
-<div class="grid g4" style="margin-bottom: 24px;">
-  <div class="stat"><div class="lbl">Flagged Irregularities</div><div class="val">10</div><div class="sub">Across 18 SEC filings</div></div>
-  <div class="stat"><div class="lbl">Capital Screened</div><div class="val">$50.1M</div><div class="sub">In flagged transactions</div></div>
-  <div class="stat"><div class="lbl">Cluster / Group Actions</div><div class="val">4 Companies</div><div class="sub">META, ALKT, AGIG, VEEE</div></div>
-  <div class="stat"><div class="lbl">Verification Rate</div><div class="val"><strong style="color:var(--buy)">100%</strong></div><div class="sub">Primary SEC source docs</div></div>
+<div class="grid g4" id="auditkpis"></div>
+<div class="note" id="auditnote" style="display:none"></div>
+
+<h2 class="sec">Flagged items <small id="flagsub"></small></h2>
+<div class="controls">
+  <input type="search" id="q" placeholder="Search ticker, company, insider or rule…">
+  <select id="sev"><option value="">All severities</option><option>High</option><option>Medium</option><option>Low</option><option>Informational</option></select>
+  <button class="btn" id="csv">Export view (CSV)</button>
 </div>
+<div class="card tight" id="tbl"></div>
 
-<div class="card tight" style="margin-bottom: 28px;">
-  <div style="padding: 16px 20px; border-bottom: 1px solid var(--line);">
-    <h3 style="margin: 0 0 4px;">Audited Irregularities Index</h3>
-    <small style="color: var(--muted)">Click any accession or ticker for official SEC filing details</small>
-  </div>
-  <div id="irr-table"></div>
-</div>
-
-<h2 class="sec">Detailed Forensic Case Breakdowns <small>line-by-line evidence from verified filings</small></h2>
-<div id="irr-details-list"></div>
-
+<h2 class="sec">Details</h2>
+<div id="details"></div>
 </main>
 <footer><div class="wrap">
-  <div>Source: <a href="https://www.sec.gov/edgar/searchedgar/companysearch">SEC EDGAR System</a>.
-    Primary Form 4/5 ownership XML documents. Educational & compliance research — not legal or investment advice.</div>
+  <div>Source: <a href="https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets">SEC Forms 3/4/5</a>.
+    Prices: Yahoo Finance / Stooq. Educational research only — not investment advice.</div>
   <div><a href="https://github.com/karagemop466-tech/CEOTrades">Source on GitHub</a></div>
 </div></footer>
 <script src="js/app.js"></script>
 <script>
-CT.load('data/irregularities.json').then(function(items) {
-  // Render table
-  new CT.Table({
-    mount: '#irr-table',
-    rows: items,
-    pageSize: 15,
-    sortKey: 'id',
-    cols: [
-      { key: 'id', label: 'Flag ID', render: function(r) { return '<strong>' + CT.esc(r.id) + '</strong>'; } },
-      { key: 'severity', label: 'Severity', render: function(r) {
-          var cls = r.severity.toLowerCase();
-          return '<span class="badge ' + cls + '">' + CT.esc(r.severity) + '</span>';
-        }
-      },
-      { key: 'tk', label: 'Ticker', render: function(r) { return '<span class="ticker">' + CT.esc(r.tk) + '</span>'; } },
-      { key: 'co', label: 'Company', render: function(r) { return CT.esc(r.co); } },
-      { key: 'category', label: 'Anomaly Category' },
-      { key: 'td', label: 'Date', cls: 'nowrap' },
-      { key: 'total_value', label: 'Value ($)', num: true, render: function(r) {
-          return r.total_value > 0 ? CT.fmtMoney(r.total_value) : 'Non-cash / $0';
-        }
-      },
-      { key: 'accessions', label: 'Primary SEC Accession(s)', render: function(r) {
-          return (r.accessions || []).map(function(acc) {
-            var cik = r.tk === 'META' ? '1326801' : (r.tk === 'ALKT' ? '1529274' : (r.tk === 'AGIG' ? '1156041' : (r.tk === 'AAPL' ? '320193' : (r.tk === 'PLTR' ? '1321655' : (r.tk === 'AMZN' ? '1018724' : (r.tk === 'NVDA' ? '1045810' : ''))))));
-            return '<div class="sec-link">' + CT.edgar(acc, cik) + '</div>';
-          }).join('');
-        }
-      }
-    ]
+Promise.all([CT.load('data/irregularities.json').catch(function(){return [];}), CT.load('data/audit.json').catch(function(){return null;})])
+.then(function (r) {
+  var rows = r[0] || [], audit = r[1];
+  var k = document.getElementById('auditkpis');
+  if (audit && audit.counts) {
+    var c = audit.counts, comp = audit.completeness || {}, integ = audit.integrity || {};
+    k.innerHTML =
+      CT.statCard('Audit status', comp.complete ? 'Complete candidate' : 'Incomplete / unproven', 'target ' + (audit.target_year || '—'), comp.complete ? 'buy' : 'sell') +
+      CT.statCard('Rows audited', CT.fmtInt(c.rows), CT.fmtInt(c.filings) + ' SEC accessions') +
+      CT.statCard('Row issues', CT.fmtInt(integ.row_issues || 0), 'mechanical checks') +
+      CT.statCard('Review flags', CT.fmtInt(rows.length), 'automated, not legal conclusions');
+    if (comp.blockers && comp.blockers.length) {
+      var n = document.getElementById('auditnote');
+      n.style.display = 'block';
+      n.innerHTML = '<strong>Coverage note:</strong> ' + comp.blockers.map(CT.esc).join(' ');
+    }
+  } else {
+    k.innerHTML = CT.statCard('Review flags', CT.fmtInt(rows.length), 'audit artifact unavailable');
+  }
+
+  document.getElementById('flagsub').textContent = rows.length ? CT.fmtInt(rows.length) + ' generated flags' : '';
+  var cols = [
+    { key: 'id', label: 'ID', render: function (x) { return '<strong>' + CT.esc(x.id) + '</strong>'; } },
+    { key: 'severity', label: 'Severity', render: function (x) { return '<span class="b ' + (x.severity === 'High' ? 'sell' : x.severity === 'Medium' ? 'warn' : 'neutral') + '">' + CT.esc(x.severity) + '</span>'; } },
+    { key: 'tk', label: 'Ticker', render: function (x) { return x.tk ? '<span class="ticker">' + CT.esc(x.tk) + '</span>' : '<span class="sub">—</span>'; } },
+    { key: 'co', label: 'Company' },
+    { key: 'category', label: 'Category' },
+    { key: 'fd', label: 'Filed' },
+    { key: 'total_value', label: 'Value', num: true, render: function (x) { return CT.fmtMoney(x.total_value); } },
+    { key: 'accessions', label: 'SEC', sort: false, render: function (x) {
+        var fs = x.filings || [];
+        if (!fs.length && x.accessions) fs = x.accessions.map(function(a){ return {acc:a, icik:x.icik}; });
+        return fs.slice(0, 4).map(function (f) { return '<a href="' + CT.edgar(f.acc, f.icik || x.icik) + '" target="_blank" rel="noopener">' + CT.esc(f.acc) + ' ↗</a>'; }).join('<br>');
+      } }
+  ];
+  var t = new CT.Table({ mount: '#tbl', rows: rows, cols: cols, pageSize: 25, sortKey: 'id', sortDir: 1,
+    empty: 'No automated review flags generated.' });
+
+  function renderDetails(list) {
+    document.getElementById('details').innerHTML = list.map(function (x) {
+      var ev = (x.evidence || []).map(function (e) { return '<li>' + CT.esc(e) + '</li>'; }).join('');
+      var filings = (x.filings || []).slice(0, 8).map(function (f) {
+        return '<a class="pill" href="' + CT.edgar(f.acc, f.icik || x.icik) + '" target="_blank" rel="noopener">SEC ' + CT.esc(f.acc) + '</a>';
+      }).join(' ');
+      return '<div class="card" style="margin-top:14px">' +
+        '<h3 style="margin-top:0">' + CT.esc(x.id + ' · ' + x.category) + '</h3>' +
+        '<p><span class="b ' + (x.severity === 'High' ? 'sell' : x.severity === 'Medium' ? 'warn' : 'neutral') + '">' + CT.esc(x.severity) + '</span> ' +
+        (x.tk ? '<span class="ticker">' + CT.esc(x.tk) + '</span> ' : '') + CT.esc(x.co || '') + '</p>' +
+        '<p><strong>Summary:</strong> ' + CT.esc(x.summary || '') + '</p>' +
+        '<p class="sub">' + CT.esc(x.details || '') + '</p>' +
+        '<p><strong>Rule:</strong> <span class="sub">' + CT.esc(x.rule || '') + '</span></p>' +
+        '<div>' + filings + '</div>' +
+        '<div class="note"><strong>Evidence from stored SEC fields:</strong><ul>' + ev + '</ul></div>' +
+      '</div>';
+    }).join('') || '<div class="card"><div class="empty">No details.</div></div>';
+  }
+  renderDetails(rows.slice(0, 50));
+
+  function apply() {
+    var q = document.getElementById('q').value.trim().toLowerCase();
+    var sev = document.getElementById('sev').value;
+    t.filter(function (x) {
+      if (sev && x.severity !== sev) return false;
+      if (!q) return true;
+      var hay = [x.id, x.tk, x.co, x.category, x.summary, x.rule, (x.insiders || []).join(' ')].join(' ').toLowerCase();
+      return hay.indexOf(q) >= 0;
+    });
+    renderDetails(t.view.slice(0, 50));
+  }
+  document.getElementById('q').addEventListener('input', CT.debounce(apply, 200));
+  document.getElementById('sev').addEventListener('change', apply);
+  document.getElementById('csv').addEventListener('click', function () {
+    CT.download('ceotrades-irregularities.csv', CT.toCSV(t.view, cols));
   });
-
-  // Render detail cards
-  var container = document.getElementById('irr-details-list');
-  container.innerHTML = items.map(function(r) {
-    var cls = r.severity.toLowerCase();
-    var evHtml = (r.evidence || []).map(function(e) {
-      return '<li>' + CT.esc(e) + '</li>';
-    }).join('');
-
-    var insHtml = (r.insiders || []).map(function(ins) {
-      return '<span class="pill">' + CT.esc(ins) + '</span>';
-    }).join(' ');
-
-    return '<div class="irr-card">' +
-      '<div class="irr-header">' +
-        '<h3 class="irr-title">' +
-          '<span class="badge ' + cls + '">' + CT.esc(r.severity) + '</span>' +
-          '<span>[' + CT.esc(r.id) + '] ' + CT.esc(r.category) + '</span> — ' +
-          '<span class="ticker">' + CT.esc(r.tk) + '</span> (' + CT.esc(r.co) + ')' +
-        '</h3>' +
-        '<div style="font-size:13px;color:var(--muted);">' +
-          '<strong>Filing:</strong> ' + CT.esc(r.fd) + ' | <strong>Trade:</strong> ' + CT.esc(r.td) +
-        '</div>' +
-      '</div>' +
-      '<div style="margin-bottom:12px;">' + insHtml + '</div>' +
-      '<p class="irr-summary">' + CT.esc(r.summary) + '</p>' +
-      '<p class="irr-details">' + CT.esc(r.details) + '</p>' +
-      '<div class="evidence-box">' +
-        '<h4>Primary SEC Source Evidence</h4>' +
-        '<ul class="evidence-list">' + evHtml + '</ul>' +
-      '</div>' +
-    '</div>';
-  }).join('');
-}).catch(function(err) {
-  CT.fail(document.getElementById('irr-table'), err);
-});
+}).catch(function (e) { CT.fail(document.getElementById('tbl'), e); });
 </script>
 </body>
 </html>
