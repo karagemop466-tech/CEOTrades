@@ -242,6 +242,13 @@ def write_empty_outputs():
                     "scope": "No data collected yet.",
                     "full_csv": "data/insider_activity.csv.gz"},
         "rows": [], "truncated": False, "row_count": 0})
+    w("insider_portfolios.json", {
+        "generated": stamp, "target_year": _target_year() or date.today().year,
+        "summary": {"target_year": _target_year() or date.today().year,
+                    "insiders": 0, "with_multiple_issuers": 0,
+                    "with_priced_value": 0, "reported_value_priced": 0,
+                    "scope": "No data collected yet."},
+        "rows": [], "truncated": False, "row_count": 0})
     with gzip.GzipFile(filename=os.path.join(out, "insider_activity.csv.gz"), mode="wb", compresslevel=9, mtime=0) as gz:
         gz.write(b"id,target_year,insider,pcik,co,tk,icik,rel,title,n,buy_n,sell_n,other_n,buy_sh,sell_sh,buy_v,sell_v,net_v,buy_sell_overlap,first,last,first_buy,last_buy,first_sell,last_sell,reported_common_shares,holding_groups,latest_holding_fd,mark_d,mark_px,holding_value,price_src,valuation_status,portfolio_scope\n")
     with open(os.path.join(out, "trades.csv"), "w", encoding="utf-8") as f:

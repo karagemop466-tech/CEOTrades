@@ -35,6 +35,16 @@
   <button class="btn" id="csv">Export view (CSV)</button>
 </div>
 <div class="card tight" id="tbl"></div>
+
+<h2 class="sec">Reported holdings across issuers <small id="psub"></small></h2>
+<p class="note" id="pnote"></p>
+<div class="controls">
+  <input type="search" id="pq" placeholder="Search insider name…">
+  <button class="btn" id="pcsv">Export view (CSV)</button>
+  <a class="btn" href="data/insider_portfolios_issuers.csv.gz" download>Per-issuer breakdown (.csv.gz)</a>
+</div>
+<div class="card tight" id="ptbl"></div>
+<div id="pdetail"></div>
 </main>
 <footer><div class="wrap">
   <div>Source: <a href="https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets">SEC Forms 3/4/5</a>.
@@ -71,6 +81,60 @@ CT.load('data/insiders.json').then(function (rows) {
     CT.download('ceotrades-insiders.csv', CT.toCSV(t.view, COLS));
   });
 }).catch(function (e) { CT.fail(document.getElementById('tbl'), e); });
+
+/* ---- per-insider reported portfolio across issuers ---- */
+var PCOLS = [
+  { key: 'insider', label: 'Insider', render: function (r) { return '<strong>' + CT.esc(CT.titleCase(r.insider)) + '</strong><div class="sub">' + CT.esc(r.title || r.rel || '') + '</div>'; } },
+  { key: 'rel', label: 'Role', render: function (r) { return '<span class="b acc">' + CT.esc(r.rel) + '</span>'; } },
+  { key: 'issuer_n', label: 'Issuers held', num: true, render: function (r) { return CT.fmtInt(r.issuer_n); } },
+  { key: 'reported_shares', label: 'Reported shares', num: true, render: function (r) { return CT.fmtInt(r.reported_shares); } },
+  { key: 'priced_value', label: 'Marked value', num: true, render: function (r) { return CT.fmtMoney(r.priced_value); } },
+  { key: 'priced_issuer_n', label: 'Priced issuers', num: true, render: function (r) { return CT.fmtInt(r.priced_issuer_n); } },
+  { key: 'net_v', label: 'Net flow', num: true, render: function (r) { return '<strong class="' + CT.pctCls(r.net_v) + '">' + CT.fmtMoney(r.net_v) + '</strong>'; } },
+  { key: 'overlap', label: 'Buy+sell', render: function (r) { return r.overlap ? '<span class="b sell">both</span>' : ''; } },
+  { key: 'last', label: 'Last filing', cls: 'nowrap' }
+];
+CT.load('data/insider_portfolios.json').then(function (doc) {
+  var rows = doc.rows || [];
+  var sum = doc.summary || {};
+  document.getElementById('pnote').textContent = sum.scope || '';
+  document.getElementById('psub').textContent = CT.fmtInt(sum.insiders) + ' insiders · ' +
+    CT.fmtInt(sum.with_multiple_issuers) + ' hold more than one issuer · reported value marked at latest closes: ' + CT.fmtMoney(sum.reported_value_priced);
+  var t = new CT.Table({ mount: '#ptbl', rows: rows, cols: PCOLS, pageSize: 50, sortKey: 'priced_value', sortDir: -1 });
+  var cur = null;
+  function show(r) {
+    cur = r;
+    var el = document.getElementById('pdetail');
+    if (!r) { el.innerHTML = ''; return; }
+    var h = '<div class="card"><h3>' + CT.esc(CT.titleCase(r.insider)) + ' — reported positions by issuer</h3>' +
+      '<div class="sub">Latest SEC as-filed post-transaction common-share counts, marked at each issuer\'s latest close when available. ' +
+      'First filing ' + CT.esc(r.first || '—') + ' · last ' + CT.esc(r.last || '—') + '.</div>' +
+      '<table><thead><tr><th>Company</th><th>Ticker</th><th>Trades</th><th>Reported shares</th><th>Marked value</th><th>Latest holding filed</th><th>SEC</th></tr></thead><tbody>';
+    (r.issuers || []).forEach(function (e) {
+      h += '<tr><td>' + CT.esc(e.co) + '</td><td>' + CT.esc(e.tk) + '</td>' +
+        '<td>' + CT.fmtInt(e.n) + ' (' + CT.fmtInt(e.buy_n) + 'b/' + CT.fmtInt(e.sell_n) + 's)</td>' +
+        '<td>' + CT.fmtInt(e.reported_shares) + '</td><td>' + CT.fmtMoney(e.holding_value) +
+        (e.valuation_status && e.valuation_status !== 'priced' ? ' <span class="sub">' + CT.esc(e.valuation_status) + '</span>' : '') + '</td>' +
+        '<td>' + CT.esc(e.latest_holding_fd || e.latest_filing_fd || '') + '</td>' +
+        '<td>' + (e.edgar_url ? '<a href="' + e.edgar_url + '" target="_blank" rel="noopener">SEC ↗</a>' : '') + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    el.innerHTML = h;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  t.mount.addEventListener('click', function (ev) {
+    var tr = ev.target.closest('tr[data-i]');
+    if (tr) show(t.view[parseInt(tr.getAttribute('data-i'), 10)]);
+  });
+  function papply() {
+    var q = document.getElementById('pq').value.trim().toLowerCase();
+    t.filter(function (r) { return !q || String(r.insider || '').toLowerCase().indexOf(q) >= 0; });
+  }
+  document.getElementById('pq').addEventListener('input', CT.debounce(papply, 200));
+  document.getElementById('pcsv').addEventListener('click', function () {
+    CT.download('ceotrades-insider-portfolios.csv', CT.toCSV(t.view, PCOLS));
+  });
+}).catch(function (e) { /* portfolios artifact absent in older builds */ });
 </script>
 </body>
 </html>

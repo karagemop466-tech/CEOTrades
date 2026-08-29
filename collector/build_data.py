@@ -55,6 +55,7 @@ COMPANY_CAP = 40         # recent transactions kept per company detail view
 CO_BUCKETS = 64          # per-company files are bucketed to keep file count sane
 INSIDER_CAP = 4000       # insiders published in the browsable table
 INSIDER_ACTIVITY_CAP = 12000  # insider/company pairs published as JSON
+INSIDER_PORTFOLIO_CAP = 8000  # per-insider cross-issuer portfolio rows published as JSON
 PAPER_BROWSE_CAP = 8000  # positions published as JSON (full set is in the CSV)
 
 
@@ -493,6 +494,157 @@ def latest_mark(bars, asof: str):
     if not c or c <= 0:
         return None
     return {"last_d": last["d"], "last_px": r4(float(c))}
+
+
+def write_insider_portfolios(agg, out_dir, marks_by_tk, target_year: int | None = None):
+    """Per-insider rollup of reported holdings ACROSS issuers.
+
+    Answers: how large is this insider's reported common-stock portfolio, based
+    on their own past and present SEC filings? For every insider/company pair
+    we take the same narrow holding estimate used by the flows page (latest
+    as-filed SHRS_OWND_FOLWNG_TRANS for non-derivative common equity per
+    direct/indirect bucket), then sum across the issuers that person actually
+    filed against in the window, marking each issuer's stake at that issuer's
+    latest close when a price exists.
+
+    This is a floor, not a brokerage statement: Form 3/4/5 rows only cover the
+    issuers the insider transacted in, buckets can overlap (direct + trust-held
+    indirect), and unpriced tickers stay explicit gaps.
+    """
+    by_person: dict[str, dict] = {}
+    for a in agg.get("activity", {}).values():
+        owner_key = a.get("pcik") or a.get("insider") or ""
+        if not owner_key:
+            continue
+        holdings = list(a.get("holdings", {}).values())
+        reported = sum(float(h.get("shares") or 0) for h in holdings)
+        mark = marks_by_tk.get(a.get("tk") or "") or {}
+        value = None
+        if holdings and mark.get("last_px") is not None:
+            value = r2(reported * float(mark["last_px"]))
+        latest_h = max(holdings, key=lambda h: (h.get("fd") or "", h.get("td") or "")) if holdings else None
+        if holdings:
+            vstatus = "priced" if value is not None else "shares_only_no_market_price"
+        else:
+            vstatus = "no_reported_post_transaction_common_shares"
+        p = by_person.get(owner_key)
+        if p is None:
+            p = by_person[owner_key] = {
+                "id": owner_key, "insider": a.get("insider") or "",
+                "pcik": a.get("pcik") or "", "rel": a.get("rel") or "Unknown",
+                "title": a.get("title") or "",
+                "issuer_n": 0, "reported_shares": 0.0, "priced_value": 0.0,
+                "priced_issuer_n": 0, "unpriced_issuer_n": 0,
+                "buy_n": 0, "sell_n": 0, "buy_v": 0.0, "sell_v": 0.0,
+                "overlap": False, "first": "", "last": "", "issuers": [],
+            }
+        if a.get("insider") and not p["insider"]:
+            p["insider"] = a["insider"]
+        if a.get("rel") and p["rel"] in ("", "Unknown"):
+            p["rel"] = a["rel"]
+        if a.get("title") and not p["title"]:
+            p["title"] = a["title"]
+        p["buy_n"] += a.get("buy_n", 0)
+        p["sell_n"] += a.get("sell_n", 0)
+        p["buy_v"] += a.get("buy_v", 0.0)
+        p["sell_v"] += a.get("sell_v", 0.0)
+        if a.get("buy_n", 0) > 0 and a.get("sell_n", 0) > 0:
+            p["overlap"] = True
+        if a.get("first") and (not p["first"] or a["first"] < p["first"]):
+            p["first"] = a["first"]
+        if a.get("last") and (not p["last"] or a["last"] > p["last"]):
+            p["last"] = a["last"]
+        p["issuers"].append({
+            "co": a.get("co") or "", "tk": a.get("tk") or "", "icik": a.get("icik") or "",
+            "n": a.get("n", 0), "buy_n": a.get("buy_n", 0), "sell_n": a.get("sell_n", 0),
+            "buy_v": r2(a.get("buy_v", 0.0)), "sell_v": r2(a.get("sell_v", 0.0)),
+            "reported_shares": r4(reported) if holdings else None,
+            "holding_value": value,
+            "valuation_status": vstatus,
+            "latest_holding_fd": (latest_h or {}).get("fd") or "",
+            "latest_filing_fd": a.get("last") or "",
+            "latest_filing_acc": (latest_h or {}).get("acc") or "",
+            "edgar_url": edgar_url((latest_h or {}).get("acc") or "", a.get("icik") or ""),
+        })
+        if holdings:
+            p["issuer_n"] += 1
+            p["reported_shares"] += reported
+            if value is not None:
+                p["priced_issuer_n"] += 1
+                p["priced_value"] += value
+            else:
+                p["unpriced_issuer_n"] += 1
+
+    rows = sorted(by_person.values(),
+                  key=lambda p: (-(p["priced_value"]), -(p["buy_v"] + p["sell_v"]),
+                                 p.get("insider") or ""))
+    for p in rows:
+        p["net_v"] = r2(p["buy_v"] - p["sell_v"])
+        p["buy_v"] = r2(p["buy_v"])
+        p["sell_v"] = r2(p["sell_v"])
+        p["reported_shares"] = r4(p["reported_shares"])
+        p["priced_value"] = r2(p["priced_value"])
+        p["issuers"].sort(key=lambda e: (-(e.get("holding_value") or -1),
+                                         -(e.get("reported_shares") or 0)))
+        p["issuers"] = p["issuers"][:25]
+
+    total_value = r2(sum(p["priced_value"] or 0 for p in rows))
+    summary = {
+        "target_year": target_year,
+        "insiders": len(rows),
+        "with_multiple_issuers": sum(1 for p in rows if p["issuer_n"] > 1),
+        "with_priced_value": sum(1 for p in rows if p["priced_value"] is not None and p["priced_value"] > 0),
+        "reported_value_priced": total_value,
+        "scope": ("Per-insider totals sum the latest SEC as-filed post-transaction common-share "
+                  "counts across the issuers that person filed against in the window, priced at "
+                  "each issuer's latest close where available. Only issuers with filed "
+                  "transactions are included; direct and indirect buckets may overlap; this is "
+                  "not a full brokerage portfolio."),
+    }
+    payload = {
+        "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "target_year": target_year,
+        "summary": summary,
+        "rows": rows[:INSIDER_PORTFOLIO_CAP],
+        "truncated": len(rows) > INSIDER_PORTFOLIO_CAP,
+        "row_count": len(rows),
+    }
+    jdump(payload, os.path.join(out_dir, "insider_portfolios.json"))
+
+    cols = ["id", "insider", "pcik", "rel", "title", "issuer_n", "reported_shares",
+            "priced_value", "priced_issuer_n", "unpriced_issuer_n", "buy_n", "sell_n",
+            "buy_v", "sell_v", "net_v", "overlap", "first", "last"]
+    ibuf = io.BytesIO()
+    with gzip.GzipFile(fileobj=ibuf, mode="wb", compresslevel=9, mtime=0) as gz:
+        txt = io.TextIOWrapper(gz, encoding="utf-8", newline="")
+        w = csv.DictWriter(txt, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        for p in rows:
+            w.writerow({k: p.get(k) for k in cols})
+        txt.flush()
+        txt.detach()
+    with open(os.path.join(out_dir, "insider_portfolios.csv.gz"), "wb") as f:
+        f.write(ibuf.getvalue())
+
+    # Full per-issuer breakdown export (one row per insider x issuer).
+    ecols = ["id", "insider", "pcik", "co", "tk", "icik", "n", "buy_n", "sell_n",
+             "buy_v", "sell_v", "reported_shares", "holding_value",
+             "valuation_status", "latest_holding_fd", "latest_filing_fd", "edgar_url"]
+    ebuf = io.BytesIO()
+    with gzip.GzipFile(fileobj=ebuf, mode="wb", compresslevel=9, mtime=0) as gz:
+        txt = io.TextIOWrapper(gz, encoding="utf-8", newline="")
+        w = csv.DictWriter(txt, fieldnames=ecols, extrasaction="ignore")
+        w.writeheader()
+        for p in rows:
+            for e in p["issuers"]:
+                erow = {"id": p["id"], "insider": p["insider"], "pcik": p["pcik"]}
+                erow.update({k: e.get(k) for k in ecols if k not in erow})
+                w.writerow({k: erow.get(k) for k in ecols})
+        txt.flush()
+        txt.detach()
+    with open(os.path.join(out_dir, "insider_portfolios_issuers.csv.gz"), "wb") as f:
+        f.write(ebuf.getvalue())
+    return payload
 
 
 def write_insider_activity(agg, out_dir, marks_by_tk, target_year: int | None = None):
@@ -1365,6 +1517,7 @@ def main() -> int:
     nco, nb = write_companies(agg, args.out)
     nins = write_insiders(agg, args.out)
     activity = write_insider_activity(agg, args.out, marks_by_tk, target_year=target_year)
+    portfolios = write_insider_portfolios(agg, args.out, marks_by_tk, target_year=target_year)
     jdump(agg["recent"], os.path.join(args.out, "recent.json"))
 
     # data/trades.csv — plain-text export of the recent tape. Kept because the
@@ -1387,6 +1540,8 @@ def main() -> int:
     log(f"  insiders.json:  {nins:,} insiders aggregated")
     log(f"  activity:       {activity['row_count']:,} insider/company pair(s), "
         f"{activity['summary']['buy_sell_pairs']:,} with both buys and sells")
+    log(f"  portfolios:     {portfolios['row_count']:,} insider(s) with reported "
+        f"holdings across {portfolios['summary']['with_multiple_issuers']:,} multi-issuer")
     log(f"  recent.json:    {len(agg['recent']):,} rows")
     log(f"  csv/:           {sum(ycounts.values()):,} rows across {len(ycounts)} years")
     log(f"  audit:          {audit['completeness']['status']} | "

@@ -267,6 +267,16 @@ def main() -> int:
         check("paper arithmetic verification clean", paper["verification"]["arithmetic_failures"], 0)
         check("findings generated", len(paper["findings"]) > 0, True)
 
+        portfolios = json.load(open(os.path.join(dout, "insider_portfolios.json")))
+        check("portfolio rows", len(portfolios["rows"]), 2)
+        jane_p = next(r for r in portfolios["rows"] if r["pcik"] == "222")
+        check("portfolio issuer count", jane_p["issuer_n"], 1)
+        check("portfolio reported shares", jane_p["reported_shares"], 900.0)
+        check("portfolio marked value", jane_p["priced_value"], 18000.0)
+        check("portfolio overlap flag", jane_p["overlap"], True)
+        check("portfolio issuer breakdown link", jane_p["issuers"][0]["edgar_url"].startswith("https://www.sec.gov/"), True)
+        check("portfolio csv exists", os.path.getsize(os.path.join(dout, "insider_portfolios.csv.gz")) > 0, True)
+
         activity = json.load(open(os.path.join(dout, "insider_activity.json")))
         check("activity pairs", activity["summary"]["insider_company_pairs"], 2)
         check("activity buy+sell overlap", activity["summary"]["buy_sell_pairs"], 1)
