@@ -1,7 +1,8 @@
 # CEOTrades — Insider Trade Intelligence
 
-**Every insider trade at every U.S. public company — collected, organised,
-paper-traded against real market prices, and analysed. Zero manual input.**
+**Goal:** every SEC-reported insider trade at every U.S. public company — collected,
+organised, paper-traded against real market prices when available, and analysed.
+Zero manual input; no fabricated rows or prices.
 
 📊 **[karagemop466-tech.github.io/CEOTrades](https://karagemop466-tech.github.io/CEOTrades/)**
 
@@ -9,8 +10,8 @@ Under Section 16 of the Securities Exchange Act of 1934, every director,
 executive officer and >10% shareholder of a public company must report their
 transactions to the SEC — Form 4 within **two business days**. That makes
 Forms 3/4/5 the richest public record of what corporate insiders do with their
-own money. CEOTrades collects all of it, then answers the follow-up question:
-**could a member of the public actually have made money copying them?**
+own money. CEOTrades is designed to collect all of it, then answer the follow-up
+question: **could a member of the public actually have made money copying them?**
 
 ---
 
@@ -58,13 +59,38 @@ absent yields an empty value — never a positional guess. Rows arriving from
 both the nightly and quarterly paths are de-duplicated on a stable identity
 key, with the SEC-published copy winning.
 
-Data is captured in full: filing and transaction dates, company name, ticker,
-issuer CIK, insider name and CIK, relationship and officer title, transaction
-code and its official description, security title, shares, price per share,
-total value, acquired/disposed flag, shares held after, direct/indirect
-ownership and its nature, plus derivative detail (underlying security,
-underlying shares, conversion or exercise price, expiration) and filing
-timeliness.
+Data is captured in full when present in the official source: filing and
+transaction dates, company name, ticker, issuer CIK, insider name and CIK,
+relationship and officer title, transaction code and its official description,
+security title, shares, price per share, total value, acquired/disposed flag,
+shares held after, direct/indirect ownership and its nature, plus derivative
+detail (underlying security, underlying shares, conversion or exercise price,
+expiration) and filing timeliness. Missing source fields remain blank/null;
+they are not guessed.
+
+## 2025 target-year collection and audit
+
+For the current-year task, run the dedicated YTD orchestrator. It uses SEC
+quarterly bulk ZIPs for completed quarters and EDGAR daily-index/XML filings for
+the current quarter:
+
+```bash
+python3 collector/collect_ytd.py --year 2025 --replace-year
+python3 collector/build_data.py --year 2025 --audit-year 2025
+python3 collector/build_pages.py
+```
+
+The collection run records `collector/data/source_manifest.json`; the build then
+emits `data/audit.json` and regenerates `INSIDER_TRADING_FORENSIC_REPORT.md`.
+If the local store plus source manifest do not prove full coverage from the
+beginning of 2025 through year-end 2025, the audit marks
+the dataset `incomplete_or_unproven` and the site displays that warning. The
+audit also blocks known manual/synthetic data generators and recomputes every
+row's share × price arithmetic.
+
+`collector/populate_verified_data.py` is intentionally disabled. Production data
+must be collected from official SEC endpoints only. Price caches must come from
+real market data sources; absent prices remain `no_price` in the paper book.
 
 ---
 
@@ -78,6 +104,7 @@ timeliness.
 | [Companies](https://karagemop466-tech.github.io/CEOTrades/companies.html) | Insider activity aggregated per issuer, with drill-down |
 | [Insiders](https://karagemop466-tech.github.io/CEOTrades/insiders.html) | Directors, officers and 10% owners ranked by activity |
 | [Findings](https://karagemop466-tech.github.io/CEOTrades/analysis.html) | ROI by role, purchase size, holding period and year |
+| [Irregularities](https://karagemop466-tech.github.io/CEOTrades/irregularities.html) | Automated review flags and audit coverage warnings |
 | [About](https://karagemop466-tech.github.io/CEOTrades/about.html) | Methodology, data dictionary, caveats |
 
 ---
@@ -87,8 +114,11 @@ timeliness.
 ```
 collector/
   bulk_backfill.py   SEC quarterly archives  -> trades-YYYY.csv.gz
-  collect.py         EDGAR daily index       -> trades-YYYY-MM.json.gz
+  collect.py         EDGAR daily index/XML    -> trades-YYYY-MM.json.gz
+  collect_ytd.py     current-year orchestrator (bulk + daily, no manual input)
   store.py           streaming reader over both formats, de-duplicating
+  audit.py           row-level integrity/completeness audit -> data/audit.json
+  irregularities.py  deterministic review flags -> data/irregularities.json
   build_data.py      aggregation + $10k paper simulation -> data/*.json
   build_site.py      orchestrator: resumable backfill, then build
   build_pages.py     static HTML generator
@@ -110,9 +140,10 @@ quarters are always refreshed so amendments and late filings are absorbed.
 ### Running it yourself
 
 ```bash
-python3 collector/bulk_backfill.py --from-year 2006 --to-year 2026  # history
-python3 collector/collect.py --days 5                               # new filings
-python3 collector/build_site.py                                     # simulate + publish
+python3 collector/collect_ytd.py --year 2025 --replace-year          # target 2025 full year
+python3 collector/bulk_backfill.py --from-year 2006 --to-year 2025  # optional through-2025 history
+python3 collector/collect.py --days 5 --no-backfill                 # new filings only
+python3 collector/build_data.py --year 2025 --audit-year 2025      # simulate + audit + publish 2025 data
 python3 collector/build_pages.py                                    # regenerate HTML
 ```
 
@@ -122,12 +153,14 @@ Standard library only — no third-party dependencies.
 
 ## Verification
 
-Roughly 150 assertions run offline, in CI, **before** anything is published:
+Offline tests and generated audits run before publication:
 
 ```bash
+python3 collector/selftest.py     # ownership XML parser + fixtures
 python3 collector/test_bulk.py    # parsing, joint filers, amendments, idempotency
 python3 collector/test_paper.py   # simulation arithmetic + no-lookahead proofs
 python3 collector/test_site.py    # every field the UI reads exists; P&L recomputed
+python3 collector/audit.py --year 2025  # completeness + row-integrity report
 ```
 
 `test_paper.py` recomputes the arithmetic by hand ($10,000 at an open of

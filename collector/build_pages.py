@@ -20,6 +20,7 @@ PAGES = [
     ("companies.html", "companies", "Companies"),
     ("insiders.html", "insiders", "Insiders"),
     ("analysis.html", "analysis", "Findings"),
+    ("irregularities.html", "irregularities", "Irregularities"),
     ("about.html", "about", "About"),
 ]
 
@@ -80,6 +81,7 @@ INDEX_BODY = """
 </section>
 
 <div class="grid g5" id="kpis"></div>
+<div class="note" id="auditnote" style="display:none"></div>
 
 <h2 class="sec">Paper book <small>simulated $10,000 per insider purchase</small></h2>
 <div class="grid g4" id="paperkpis"></div>
@@ -91,6 +93,7 @@ INDEX_BODY = """
   <a href="companies.html"><div class="t">🏢 Companies</div><div class="d">Insider activity aggregated per issuer, with buy/sell flow and net dollars.</div></a>
   <a href="insiders.html"><div class="t">👤 Insiders</div><div class="d">Directors, officers and 10% owners ranked by activity and net flow.</div></a>
   <a href="analysis.html"><div class="t">🔍 Findings</div><div class="d">ROI by role, conviction size and holding period, plus filing-lag statistics.</div></a>
+  <a href="irregularities.html"><div class="t">⚠️ Irregularities</div><div class="d">Automated review flags for coverage gaps, large transactions, clusters and data-quality issues.</div></a>
   <a href="about.html"><div class="t">📖 Methodology</div><div class="d">Exactly how signals, entries and returns are computed — and the caveats.</div></a>
 </div>
 
@@ -100,9 +103,9 @@ INDEX_BODY = """
 """
 
 INDEX_JS = """
-Promise.all([CT.load('data/summary.json'), CT.load('data/paper/summary.json').catch(function(){return null;}), CT.load('data/recent.json').catch(function(){return [];})])
+Promise.all([CT.load('data/summary.json'), CT.load('data/paper/summary.json').catch(function(){return null;}), CT.load('data/recent.json').catch(function(){return [];}), CT.load('data/audit.json').catch(function(){return null;})])
 .then(function (r) {
-  var s = r[0], p = r[1], recent = r[2] || [];
+  var s = r[0], p = r[1], recent = r[2] || [], audit = r[3];
   var c = s.counts, v = s.value;
   document.getElementById('pills').innerHTML =
     '<span class="pill">' + CT.fmtInt(c.trades) + ' transactions</span>' +
@@ -116,6 +119,14 @@ Promise.all([CT.load('data/summary.json'), CT.load('data/paper/summary.json').ca
     CT.statCard('Insiders', CT.fmtInt(c.insiders), 'directors, officers, 10% owners') +
     CT.statCard('Insider buying', CT.fmtMoney(v.buy), CT.fmtInt(c.buys) + ' code-P purchases', 'buy') +
     CT.statCard('Insider selling', CT.fmtMoney(v.sell), CT.fmtInt(c.sells) + ' code-S sales', 'sell');
+
+  if (audit && audit.completeness && !audit.completeness.complete) {
+    var an = document.getElementById('auditnote');
+    an.style.display = 'block';
+    an.innerHTML = '<strong>Audit warning:</strong> Current local data is ' +
+      CT.esc(audit.completeness.status || 'incomplete_or_unproven') + '. ' +
+      '<a href="irregularities.html">Review coverage and flags →</a>';
+  }
 
   var pk = document.getElementById('paperkpis');
   if (p && p.counts && p.counts.open) {
@@ -143,7 +154,7 @@ Promise.all([CT.load('data/summary.json'), CT.load('data/paper/summary.json').ca
       { key: 'sh', label: 'Shares', num: true, render: function (r) { return CT.fmtInt(r.sh); } },
       { key: 'px', label: 'Price', num: true, render: function (r) { return CT.fmtPx(r.px); } },
       { key: 'val', label: 'Value', num: true, render: function (r) { return CT.fmtMoney(r.val); } },
-      { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
+      { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc, r.icik) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
     ]
   });
 }).catch(function (e) { CT.fail(document.getElementById('kpis'), e); });
@@ -214,7 +225,7 @@ Promise.all([CT.load('data/paper/summary.json'), CT.load('data/paper/positions.j
     { key: 'last_px', label: 'Last', num: true, render: function (r) { return CT.fmtPx(r.last_px); } },
     { key: 'pnl', label: 'P&L', num: true, render: function (r) { return '<span class="' + CT.pctCls(r.pnl) + '">' + CT.fmtUSD(r.pnl) + '</span>'; } },
     { key: 'roi', label: 'ROI', num: true, render: function (r) { return '<strong class="' + CT.pctCls(r.roi) + '">' + CT.fmtPct(r.roi) + '</strong>'; } },
-    { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
+    { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc, r.icik) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
   ];
   var t = new CT.Table({ mount: '#tbl', rows: rows, cols: cols, pageSize: 50, sortKey: 'fd', sortDir: -1 });
 
@@ -295,7 +306,7 @@ Promise.all([CT.load('data/recent.json').catch(function(){return [];}), CT.load(
     { key: 'px', label: 'Price', num: true, render: function (r) { return CT.fmtPx(r.px); } },
     { key: 'val', label: 'Value', num: true, render: function (r) { return CT.fmtMoney(r.val); } },
     { key: 'af', label: 'Held after', num: true, render: function (r) { return CT.fmtInt(r.af); } },
-    { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
+    { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc, r.icik) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
   ];
   var t = new CT.Table({ mount: '#tbl', rows: rows, cols: cols, pageSize: 50, sortKey: 'fd', sortDir: -1,
     empty: 'No recent rows. Use the yearly downloads for full history.' });
@@ -415,7 +426,7 @@ function showCompany(cik, rows) {
         { key: 'sh', label: 'Shares', num: true, render: function (r) { return CT.fmtInt(r.sh); } },
         { key: 'px', label: 'Price', num: true, render: function (r) { return CT.fmtPx(r.px); } },
         { key: 'val', label: 'Value', num: true, render: function (r) { return CT.fmtMoney(r.val); } },
-        { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
+        { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc, r.icik) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
       ]
     });
   }).catch(function (e) { CT.fail(box, e); });
@@ -559,6 +570,109 @@ Promise.all([CT.load('data/paper/summary.json'), CT.load('data/summary.json')])
 
 # ---------------------------------------------------------------------------
 
+IRREGULARITIES_BODY = """
+<div class="page-head">
+  <h1>Irregularities</h1>
+  <p>Automated review flags generated from the SEC-derived local store. These are not legal
+     conclusions. They identify coverage gaps, data-quality issues and transaction patterns that
+     should be reviewed against the linked SEC accessions before publication or investment use.</p>
+</div>
+
+<div class="grid g4" id="auditkpis"></div>
+<div class="note" id="auditnote" style="display:none"></div>
+
+<h2 class="sec">Flagged items <small id="flagsub"></small></h2>
+<div class="controls">
+  <input type="search" id="q" placeholder="Search ticker, company, insider or rule…">
+  <select id="sev"><option value="">All severities</option><option>High</option><option>Medium</option><option>Low</option><option>Informational</option></select>
+  <button class="btn" id="csv">Export view (CSV)</button>
+</div>
+<div class="card tight" id="tbl"></div>
+
+<h2 class="sec">Details</h2>
+<div id="details"></div>
+"""
+
+IRREGULARITIES_JS = """
+Promise.all([CT.load('data/irregularities.json').catch(function(){return [];}), CT.load('data/audit.json').catch(function(){return null;})])
+.then(function (r) {
+  var rows = r[0] || [], audit = r[1];
+  var k = document.getElementById('auditkpis');
+  if (audit && audit.counts) {
+    var c = audit.counts, comp = audit.completeness || {}, integ = audit.integrity || {};
+    k.innerHTML =
+      CT.statCard('Audit status', comp.complete ? 'Complete candidate' : 'Incomplete / unproven', 'target ' + (audit.target_year || '—'), comp.complete ? 'buy' : 'sell') +
+      CT.statCard('Rows audited', CT.fmtInt(c.rows), CT.fmtInt(c.filings) + ' SEC accessions') +
+      CT.statCard('Row issues', CT.fmtInt(integ.row_issues || 0), 'mechanical checks') +
+      CT.statCard('Review flags', CT.fmtInt(rows.length), 'automated, not legal conclusions');
+    if (comp.blockers && comp.blockers.length) {
+      var n = document.getElementById('auditnote');
+      n.style.display = 'block';
+      n.innerHTML = '<strong>Coverage note:</strong> ' + comp.blockers.map(CT.esc).join(' ');
+    }
+  } else {
+    k.innerHTML = CT.statCard('Review flags', CT.fmtInt(rows.length), 'audit artifact unavailable');
+  }
+
+  document.getElementById('flagsub').textContent = rows.length ? CT.fmtInt(rows.length) + ' generated flags' : '';
+  var cols = [
+    { key: 'id', label: 'ID', render: function (x) { return '<strong>' + CT.esc(x.id) + '</strong>'; } },
+    { key: 'severity', label: 'Severity', render: function (x) { return '<span class="b ' + (x.severity === 'High' ? 'sell' : x.severity === 'Medium' ? 'warn' : 'neutral') + '">' + CT.esc(x.severity) + '</span>'; } },
+    { key: 'tk', label: 'Ticker', render: function (x) { return x.tk ? '<span class="ticker">' + CT.esc(x.tk) + '</span>' : '<span class="sub">—</span>'; } },
+    { key: 'co', label: 'Company' },
+    { key: 'category', label: 'Category' },
+    { key: 'fd', label: 'Filed' },
+    { key: 'total_value', label: 'Value', num: true, render: function (x) { return CT.fmtMoney(x.total_value); } },
+    { key: 'accessions', label: 'SEC', sort: false, render: function (x) {
+        var fs = x.filings || [];
+        if (!fs.length && x.accessions) fs = x.accessions.map(function(a){ return {acc:a, icik:x.icik}; });
+        return fs.slice(0, 4).map(function (f) { return '<a href="' + CT.edgar(f.acc, f.icik || x.icik) + '" target="_blank" rel="noopener">' + CT.esc(f.acc) + ' ↗</a>'; }).join('<br>');
+      } }
+  ];
+  var t = new CT.Table({ mount: '#tbl', rows: rows, cols: cols, pageSize: 25, sortKey: 'id', sortDir: 1,
+    empty: 'No automated review flags generated.' });
+
+  function renderDetails(list) {
+    document.getElementById('details').innerHTML = list.map(function (x) {
+      var ev = (x.evidence || []).map(function (e) { return '<li>' + CT.esc(e) + '</li>'; }).join('');
+      var filings = (x.filings || []).slice(0, 8).map(function (f) {
+        return '<a class="pill" href="' + CT.edgar(f.acc, f.icik || x.icik) + '" target="_blank" rel="noopener">SEC ' + CT.esc(f.acc) + '</a>';
+      }).join(' ');
+      return '<div class="card" style="margin-top:14px">' +
+        '<h3 style="margin-top:0">' + CT.esc(x.id + ' · ' + x.category) + '</h3>' +
+        '<p><span class="b ' + (x.severity === 'High' ? 'sell' : x.severity === 'Medium' ? 'warn' : 'neutral') + '">' + CT.esc(x.severity) + '</span> ' +
+        (x.tk ? '<span class="ticker">' + CT.esc(x.tk) + '</span> ' : '') + CT.esc(x.co || '') + '</p>' +
+        '<p><strong>Summary:</strong> ' + CT.esc(x.summary || '') + '</p>' +
+        '<p class="sub">' + CT.esc(x.details || '') + '</p>' +
+        '<p><strong>Rule:</strong> <span class="sub">' + CT.esc(x.rule || '') + '</span></p>' +
+        '<div>' + filings + '</div>' +
+        '<div class="note"><strong>Evidence from stored SEC fields:</strong><ul>' + ev + '</ul></div>' +
+      '</div>';
+    }).join('') || '<div class="card"><div class="empty">No details.</div></div>';
+  }
+  renderDetails(rows.slice(0, 50));
+
+  function apply() {
+    var q = document.getElementById('q').value.trim().toLowerCase();
+    var sev = document.getElementById('sev').value;
+    t.filter(function (x) {
+      if (sev && x.severity !== sev) return false;
+      if (!q) return true;
+      var hay = [x.id, x.tk, x.co, x.category, x.summary, x.rule, (x.insiders || []).join(' ')].join(' ').toLowerCase();
+      return hay.indexOf(q) >= 0;
+    });
+    renderDetails(t.view.slice(0, 50));
+  }
+  document.getElementById('q').addEventListener('input', CT.debounce(apply, 200));
+  document.getElementById('sev').addEventListener('change', apply);
+  document.getElementById('csv').addEventListener('click', function () {
+    CT.download('ceotrades-irregularities.csv', CT.toCSV(t.view, cols));
+  });
+}).catch(function (e) { CT.fail(document.getElementById('tbl'), e); });
+"""
+
+# ---------------------------------------------------------------------------
+
 ABOUT_BODY = """
 <div class="page-head">
   <h1>Methodology</h1>
@@ -624,9 +738,13 @@ ABOUT_BODY = """
 
 <div class="card" style="margin-top:16px">
   <h3>Automation</h3>
-  <p>A GitHub Actions workflow runs nightly: it fetches new filings, refreshes prices, re-runs the
-     simulation, rebuilds every JSON artifact and commits the result. There is no manual step.
-     A parser self-test runs first and the job aborts before publishing if any check fails.</p>
+  <p>A GitHub Actions workflow runs nightly: it fetches target-year filings from official SEC
+     bulk archives plus the EDGAR daily index, refreshes prices when real market data is reachable,
+     re-runs the simulation, rebuilds every JSON artifact and commits the result. There is no
+     manual data entry step.</p>
+  <p>Hard-coded trade lists and synthetic price paths are intentionally disabled. If a SEC or
+     market-data source is unavailable, the affected rows or paper positions are marked incomplete
+     or <code>no_price</code>; they are never filled by interpolation or estimates.</p>
   <div id="gen" class="sub"></div>
 </div>
 
@@ -674,6 +792,9 @@ SPECS = [
     ("analysis.html", "analysis", "Findings",
      "Forward-test results: ROI by role, purchase size, holding period and year.",
      ANALYSIS_BODY, ANALYSIS_JS),
+    ("irregularities.html", "irregularities", "Irregularities",
+     "Automated review flags for SEC insider-trade data quality and transaction patterns.",
+     IRREGULARITIES_BODY, IRREGULARITIES_JS),
     ("about.html", "about", "About",
      "Methodology, paper-trading rules, caveats and data dictionary for CEOTrades.",
      ABOUT_BODY, ABOUT_JS),

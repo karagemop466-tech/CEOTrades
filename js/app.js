@@ -54,11 +54,14 @@
     if (/[a-z]/.test(s)) return s;               // already mixed case
     return s.toLowerCase().replace(/\b([a-z])/g, function (m, c) { return c.toUpperCase(); });
   }
-  function edgar(acc) {
+  function edgar(acc, issuerCik) {
     var a = String(acc || '').replace(/[^0-9-]/g, '');
     if (!a) return '';
     var plain = a.replace(/-/g, '');
-    var cik = plain.slice(0, 10).replace(/^0+/, '');
+    var cik = String(issuerCik || '').replace(/\D/g, '').replace(/^0+/, '');
+    // Ownership-form accession prefixes often identify the reporting owner or
+    // filing agent, not the issuer. Prefer the issuer CIK from parsed SEC data.
+    if (!cik) cik = plain.slice(0, 10).replace(/^0+/, '');
     return 'https://www.sec.gov/Archives/edgar/data/' + cik + '/' + plain + '/' + a + '-index.htm';
   }
   function sideBadge(code, side) {

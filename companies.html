@@ -121,7 +121,7 @@ function showCompany(cik, rows) {
         { key: 'sh', label: 'Shares', num: true, render: function (r) { return CT.fmtInt(r.sh); } },
         { key: 'px', label: 'Price', num: true, render: function (r) { return CT.fmtPx(r.px); } },
         { key: 'val', label: 'Value', num: true, render: function (r) { return CT.fmtMoney(r.val); } },
-        { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
+        { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc, r.icik) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
       ]
     });
   }).catch(function (e) { CT.fail(box, e); });

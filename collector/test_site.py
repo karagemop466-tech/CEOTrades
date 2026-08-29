@@ -91,6 +91,22 @@ def main() -> int:
             check(f"csv/trades-{y['y']}.csv.gz exists",
                   os.path.exists(os.path.join(ROOT, "data", "csv", f"trades-{y['y']}.csv.gz")))
 
+    print("4b. audit / irregularities contract")
+    a = load("data/audit.json")
+    for k in ("generated", "target_year", "official_sources", "completeness", "counts", "integrity", "assurance"):
+        check(f"audit.{k}", k in a)
+    for k in ("status", "complete", "target_start", "target_end", "blockers"):
+        check(f"audit.completeness.{k}", k in a["completeness"])
+    for k in ("rows", "filings", "companies", "insiders", "with_ticker"):
+        check(f"audit.counts.{k}", k in a["counts"])
+    check("audit does not detect manual/synthetic generator",
+          not a["integrity"].get("manual_data_guard", {}).get("manual_or_synthetic_generators_detected", True))
+    irr = load("data/irregularities.json")
+    check("irregularities is a list", isinstance(irr, list))
+    if irr:
+        need = {"id", "category", "severity", "summary", "details", "rule", "evidence", "review_status"}
+        check("irregularity rows complete", need <= set(irr[0]), str(need - set(irr[0])))
+
     print("5. paper/summary.json contract")
     p = load("data/paper/summary.json")
     for k in ("stake", "counts", "capital", "roi", "gap", "horizons",

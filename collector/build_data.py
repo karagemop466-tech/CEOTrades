@@ -43,6 +43,8 @@ SITE_DATA = os.path.join(ROOT, "data")
 sys.path.insert(0, HERE)
 
 import store  # noqa: E402
+import audit as audit_mod  # noqa: E402
+import irregularities as irregularities_mod  # noqa: E402
 
 RECENT_DAYS = 120        # window for the front-page tape
 RECENT_CAP = 6000        # hard cap on tape rows
@@ -85,7 +87,14 @@ def _new_ins():
             "first": "", "last": ""}
 
 
-def collect(data_dir: str):
+def collect(data_dir: str, target_year: int | None = None):
+    """Aggregate rows from the store.
+
+    When target_year is supplied, only rows whose SEC filing date falls in that
+    calendar year are published. Rows outside the target year are ignored rather
+    than carried into the UI, which prevents a 2025 build from accidentally
+    showing 2026 sample data.
+    """
     companies: dict[str, dict] = {}
     insiders: dict[str, dict] = {}
     by_code = defaultdict(lambda: {"n": 0, "v": 0.0})
@@ -107,8 +116,10 @@ def collect(data_dir: str):
     first_fd, last_fd = "9999-99-99", ""
 
     for r in store.iter_rows(data_dir):
-        totals["n"] += 1
         fd = r.get("fd") or ""
+        if target_year and (len(fd) < 4 or fd[:4] != str(target_year)):
+            continue
+        totals["n"] += 1
         code = (r.get("code") or "?")
         side = r.get("side") or "other"
         v = r.get("val") or 0.0
@@ -357,8 +368,12 @@ def write_insiders(agg, out_dir):
     return total
 
 
-def write_year_csvs(data_dir, out_dir):
-    """Publish the complete history as one gzipped CSV per year."""
+def write_year_csvs(data_dir, out_dir, target_year: int | None = None):
+    """Publish gzipped CSV exports by filing year.
+
+    A target-year build exports only that year; otherwise the complete local
+    history is exported one file per year.
+    """
     cdir = os.path.join(out_dir, "csv")
     os.makedirs(cdir, exist_ok=True)
     for fn in os.listdir(cdir):
@@ -371,6 +386,8 @@ def write_year_csvs(data_dir, out_dir):
         for r in store.iter_rows(data_dir):
             y = (r.get("fd") or "")[:4]
             if not y.isdigit():
+                continue
+            if target_year and y != str(target_year):
                 continue
             h = handles.get(y)
             if h is None:
@@ -391,7 +408,7 @@ def write_year_csvs(data_dir, out_dir):
     return dict(counts)
 
 
-def write_summary(agg, out_dir, paper_counts):
+def write_summary(agg, out_dir, paper_counts, target_year: int | None = None):
     t = agg["totals"]
     months = sorted(agg["monthly"].items())
     code_rows = sorted(
@@ -403,6 +420,7 @@ def write_summary(agg, out_dir, paper_counts):
         key=lambda x: x["y"])
     summary = {
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "target_year": target_year,
         "range": {"from": agg["first_fd"], "to": agg["last_fd"]},
         "counts": {
             "trades": t["n"], "filings": agg["filings"],
@@ -934,18 +952,29 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Build CEOTrades site data.")
     ap.add_argument("--data", default=DATA_IN)
     ap.add_argument("--out", default=SITE_DATA)
+    ap.add_argument("--year", type=int, default=0,
+                    help="publish only this SEC filing year (0 = all local rows)")
     ap.add_argument("--offline", action="store_true",
                     help="use only cached prices (no network)")
     ap.add_argument("--max-tickers", type=int, default=0,
                     help="limit tickers priced this run (0 = no limit)")
+    ap.add_argument("--price-budget-min", type=float,
+                    default=float(os.environ.get("CEOTRADES_PRICE_MIN", "0")),
+                    help="maximum minutes to spend fetching market prices; 0 = no explicit limit")
+    ap.add_argument("--audit-year", type=int, default=0,
+                    help="target year for completeness/audit artifacts (default: --year or current year)")
     args = ap.parse_args()
+    target_year = args.year or None
+    audit_year = args.audit_year or target_year or audit_mod.asof_today().year
 
     if not store.shard_files(args.data):
         log(f"No trade shards found in {args.data}. Run bulk_backfill.py first.")
         return 1
 
     log("Pass 1: streaming trade store …")
-    agg = collect(args.data)
+    if target_year:
+        log(f"  filtering to SEC filing year {target_year}")
+    agg = collect(args.data, target_year=target_year)
     t = agg["totals"]
     log(f"  {t['n']:,} rows | {agg['filings']:,} filings | "
         f"{len(agg['companies']):,} companies | {len(agg['insiders']):,} insiders")
@@ -973,10 +1002,16 @@ def main() -> int:
         tickers = tickers[:args.max_tickers]
     log(f"  {len(tickers):,} unique tickers to price")
 
-    asof = date.today().isoformat()
+    asof = audit_mod.asof_today().isoformat()
     positions, priced, nosrc = [], 0, 0
+    price_deadline = None
+    if args.price_budget_min and args.price_budget_min > 0:
+        price_deadline = time.monotonic() + args.price_budget_min * 60.0
     for i, tk in enumerate(tickers, 1):
-        bars, src = get_bars(tk, offline=args.offline)
+        if price_deadline is not None and time.monotonic() > price_deadline:
+            bars, src = [], "price_budget_exhausted"
+        else:
+            bars, src = get_bars(tk, offline=args.offline)
         if bars:
             priced += 1
         else:
@@ -1005,13 +1040,20 @@ def main() -> int:
         w.writeheader()
         for r in agg["recent"]:
             w.writerow({k: r.get(k) for k in COMPACT_KEYS})
-    ycounts = write_year_csvs(args.data, args.out)
-    summary = write_summary(agg, args.out, paper["counts"])
+    ycounts = write_year_csvs(args.data, args.out, target_year=target_year)
+    summary = write_summary(agg, args.out, paper["counts"], target_year=target_year)
+    report_path = (os.path.join(ROOT, "INSIDER_TRADING_FORENSIC_REPORT.md")
+                   if os.path.abspath(args.out) == os.path.abspath(SITE_DATA) else None)
+    audit = audit_mod.write_audit(args.data, args.out, audit_year, report_path)
+    flags = irregularities_mod.write_irregularities(args.data, args.out, audit_year, audit)
 
     log(f"  companies.json: {nco:,} rows ({nb} detail buckets)")
     log(f"  insiders.json:  {nins:,} insiders aggregated")
     log(f"  recent.json:    {len(agg['recent']):,} rows")
     log(f"  csv/:           {sum(ycounts.values()):,} rows across {len(ycounts)} years")
+    log(f"  audit:          {audit['completeness']['status']} | "
+        f"{audit['integrity']['row_issues']:,} row issues")
+    log(f"  irregularities: {len(flags):,} automated review flag(s)")
     log(f"  paper:          {paper['counts']['open']:,} open positions, "
         f"ROI {paper['capital']['roi']}")
     log(f"Done. {summary['counts']['trades']:,} transactions published.")
