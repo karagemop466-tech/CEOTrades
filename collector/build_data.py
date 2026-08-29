@@ -45,6 +45,7 @@ SITE_DATA = os.path.join(ROOT, "data")
 sys.path.insert(0, HERE)
 
 import store  # noqa: E402
+import runlog  # noqa: E402
 import audit as audit_mod  # noqa: E402
 import irregularities as irregularities_mod  # noqa: E402
 
@@ -692,6 +693,10 @@ UA_MKT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko
 PRICE_CACHE = os.path.join(HERE, "data", "prices")
 STAKE = 10_000.0
 MIN_INSIDER_VALUE = 1_000.0   # ignore token purchases
+# A regular U.S. session always follows a filing within a few days (weekends,
+# holidays). If the first available open is farther away than this, the price
+# series does not reach the entry session and no entry may be inferred.
+ENTRY_MAX_GAP_DAYS = 10
 
 
 class _Throttle:
@@ -788,7 +793,7 @@ def fetch_yahoo(tk: str):
     sym = urllib.parse.quote(yahoo_symbol(tk), safe="-")
     for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
         raw = http_get(f"https://{host}/v8/finance/chart/{sym}"
-                       f"?interval=1d&range=max&events=split")
+                       f"?interval=1d&range=5y&events=split")
         if raw:
             bars = bars_from_yahoo(raw)
             if bars:
@@ -921,12 +926,37 @@ def simulate(sig, bars, asof):
         return out
     i = next_open_after(usable, sig["fd"])
     if i is None:
+        # Distinguish a pending fill (series reaches the filing date) from a
+        # data gap (series ends before the filing date — delisted or uncovered).
+        if usable and usable[-1]["d"] < sig["fd"]:
+            out["status"] = "no_price"
+            out["entry_rule_status"] = "no_bars_after_filing"
+            out["entry_check"] = ("Market-bar series ends " + usable[-1]["d"] +
+                                  ", before the SEC filing date; the name is likely "
+                                  "delisted or uncovered — no entry price was inferred.")
+            return out
         out["status"] = "awaiting_entry"
         out["entry_rule_status"] = "awaiting_entry"
         out["entry_check"] = "Bars exist, but no regular-session open strictly after the SEC filing date is available as of the build date."
         return out
     entry = usable[i]
     epx = float(entry["o"])
+    # Guard against a short price window: if the first session after the
+    # filing date is far away, the bar list does not actually reach the entry
+    # date (e.g. a 1-year fetch for an older filing). Filling at that later
+    # open would fabricate a wrong entry date and price.
+    try:
+        gap_days = (date.fromisoformat(entry["d"]) - date.fromisoformat(sig["fd"])).days
+    except ValueError:
+        gap_days = None
+    if gap_days is not None and gap_days > ENTRY_MAX_GAP_DAYS:
+        out["status"] = "no_price"
+        out["entry_rule_status"] = "entry_window_missing"
+        out["entry_gap_days"] = gap_days
+        out["entry_check"] = (f"First available open is {gap_days} days after the SEC filing "
+                              "date; the fetched price history does not reach the entry "
+                              "session, so no entry price was inferred.")
+        return out
     sh = STAKE / epx
     verified_entry = entry["d"] > sig["fd"] and epx > 0
     out.update({"status": "open", "entry_d": entry["d"], "entry_px": r4(epx),
@@ -1055,6 +1085,10 @@ def analyze(positions):
             "open": len(opens),
             "awaiting_entry": sum(1 for p in positions if p["status"] == "awaiting_entry"),
             "no_price": sum(1 for p in positions if p["status"] == "no_price"),
+            "entry_window_missing": sum(1 for p in positions
+                                        if p.get("entry_rule_status") == "entry_window_missing"),
+            "no_bars_after_filing": sum(1 for p in positions
+                                        if p.get("entry_rule_status") == "no_bars_after_filing"),
         },
         "capital": {
             "deployed": r2(deployed), "value": r2(value),
@@ -1110,7 +1144,18 @@ def findings(a, opens):
         msg = "No paper positions have been opened yet."
         if missing or awaiting:
             msg += f" Signals awaiting usable prices: no_price={missing:,}, awaiting_entry={awaiting:,}."
+        ewm = a["counts"].get("entry_window_missing", 0)
+        nbaf = a["counts"].get("no_bars_after_filing", 0)
+        if ewm or nbaf:
+            msg += (f" Price-history gaps (no entry inferred, never estimated): "
+                    f"entry_window_missing={ewm:,}, no_bars_after_filing={nbaf:,}.")
         return [msg]
+    ewm = a["counts"].get("entry_window_missing", 0)
+    nbaf = a["counts"].get("no_bars_after_filing", 0)
+    if ewm or nbaf:
+        f.append(f"Price-history gaps kept explicit: {ewm:,} signal(s) whose fetched bars do not "
+                 f"reach the entry session (entry_window_missing) and {nbaf:,} whose series ends "
+                 f"before the filing date (no_bars_after_filing). No entry was inferred for them.")
     roi = a["roi"]
     f.append(
         f"{n:,} simulated $10,000 positions are open, deploying "
@@ -1215,6 +1260,7 @@ def write_paper(positions, out_dir):
 
 def main() -> int:
     import argparse
+    runlog.start("build_data")
     ap = argparse.ArgumentParser(description="Build CEOTrades site data.")
     ap.add_argument("--data", default=DATA_IN)
     ap.add_argument("--out", default=SITE_DATA)
@@ -1349,6 +1395,11 @@ def main() -> int:
     log(f"  paper:          {paper['counts']['open']:,} open positions, "
         f"ROI {paper['capital']['roi']}")
     log(f"Done. {summary['counts']['trades']:,} transactions published.")
+    if target_year and summary["counts"]["trades"] == 0:
+        log("FAIL: the target-year publish contains 0 trades — the official SEC "
+            "sources yielded nothing for this window. Check collector/data/logs/ "
+            "and source_manifest.json; refusing to report success.")
+        return 1
     return 0
 
 

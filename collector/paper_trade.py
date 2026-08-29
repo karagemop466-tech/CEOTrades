@@ -61,6 +61,10 @@ from collect import load_dataset  # noqa: E402
 STAKE = 10000.0
 # Skip sub-dollar "purchases" (almost always a $0 grant mis-coded or a stub).
 MIN_INSIDER_VALUE = 1.0
+# A regular U.S. session always follows a filing within a few days (weekends,
+# holidays). If the first available open is farther away than this, the price
+# series does not reach the entry session and no entry may be inferred.
+ENTRY_MAX_GAP_DAYS = 10
 # Yahoo/Stooq/Nasdaq polite pacing.
 MKT_RATE = 4.0
 
@@ -369,6 +373,7 @@ def simulate_one(signal: dict, bars: list[dict], asof: str, stake: float = STAKE
         "gap": None,
         "delay_td_fd": None,
         "delay_fd_entry": None,
+        "entry_note": None,
         "r0": None, "r0_d": None,
         "r1": None, "r1_d": None,
         "r5": None, "r5_d": None,
@@ -389,12 +394,33 @@ def simulate_one(signal: dict, bars: list[dict], asof: str, stake: float = STAKE
     nxt = next_open_after(usable, fd)
     if nxt is None:
         # Filing is public but the next session has not printed an open yet.
+        # If the series ends before the filing date the ticker was delisted or
+        # our history does not cover it — that is a data gap, not a pending
+        # fill, and must not be presented as awaiting_entry.
+        if usable and usable[-1]["d"] < fd:
+            out["status"] = "no_price"
+            out["entry_note"] = ("no_bars_after_filing: market-bar series ends "
+                                 f"{usable[-1]['d']}, before the filing date — no entry was inferred")
+            return out
         out["status"] = "awaiting_entry"
         return out
 
     entry_d, entry_px, entry_close, idx = nxt
     if not entry_px or entry_px <= 0:
         out["status"] = "no_price"
+        return out
+
+    # Guard against a short price window: if the first session after the
+    # filing date is far away, the bar list does not actually reach the
+    # entry date (e.g. a 1-year fetch for an older filing). Filling at that
+    # later open would fabricate a wrong entry date and price.
+    _e, _f = _parse_ymd(entry_d), _parse_ymd(fd)
+    if _e and _f and (_e - _f).days > ENTRY_MAX_GAP_DAYS:
+        out["status"] = "no_price"
+        out["entry_note"] = ("entry_window_missing: first available open is "
+                             f"{(_e - _f).days} days after the filing date; the "
+                             "price history does not reach the entry session — "
+                             "no entry was inferred")
         return out
 
     shares = stake / entry_px
@@ -484,7 +510,7 @@ def _bars_from_yahoo_json(raw: bytes) -> list[dict] | None:
 def fetch_yahoo(tk: str) -> tuple[list[dict] | None, str]:
     sym = urllib.parse.quote(yahoo_symbol(tk), safe="-")
     for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
-        url = f"https://{host}/v8/finance/chart/{sym}?interval=1d&range=1y&events=div%2Csplit"
+        url = f"https://{host}/v8/finance/chart/{sym}?interval=1d&range=3y&events=div%2Csplit"
         raw = http_get(url, UA_MKT)
         if not raw:
             continue
@@ -532,8 +558,9 @@ def fetch_stooq(tk: str) -> tuple[list[dict] | None, str]:
             "v": int(vol) if vol is not None else None,
         })
     bars.sort(key=lambda b: b["d"])
-    # Stooq returns the full history; keep 1y to match Yahoo.
-    cut = (utcnow().date() - timedelta(days=400)).isoformat()
+    # Stooq returns the full history; keep ~3.5y so target-year filings and
+    # their 252-session horizons are always covered by real bars.
+    cut = (utcnow().date() - timedelta(days=1300)).isoformat()
     bars = [b for b in bars if b["d"] >= cut]
     return (bars or None), "stooq"
 
@@ -543,7 +570,7 @@ def fetch_nasdaq(tk: str) -> tuple[list[dict] | None, str]:
     today = utcnow().date()
     url = (
         f"https://api.nasdaq.com/api/quote/{sym}/historical"
-        f"?assetclass=stocks&fromdate={(today - timedelta(days=400)).isoformat()}"
+        f"?assetclass=stocks&fromdate={(today - timedelta(days=1300)).isoformat()}"
         f"&todate={today.isoformat()}&limit=9999"
     )
     raw = http_get(url, UA_MKT)

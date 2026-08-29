@@ -48,6 +48,8 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 
+import runlog
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -683,6 +685,7 @@ def save_dataset(data_dir: str, rows: list[dict]):
 # ---------------------------------------------------------------------------
 
 def main():
+    runlog.start("collect")
     ap = argparse.ArgumentParser(description="Collect SEC Form 4/5 insider trades")
     ap.add_argument("--days", type=int, default=3,
                     help="collect this many calendar days ending yesterday")
