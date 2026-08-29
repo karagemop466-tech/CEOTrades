@@ -52,7 +52,11 @@ from datetime import date, datetime, timedelta, timezone
 # Constants
 # ---------------------------------------------------------------------------
 
-UA = "CEOTrades Insider-Trade Collector (github.com/karagemop466-tech/CEOTrades)"
+UA = os.environ.get(
+    "SEC_UA",
+    "CEOTrades Insider-Trade Collector https://github.com/karagemop466-tech/CEOTrades "
+    "karagemop466-tech@users.noreply.github.com",
+)
 ARCHIVES = "https://www.sec.gov/Archives"
 DAILY_INDEX = ARCHIVES + "/edgar/daily-index"
 

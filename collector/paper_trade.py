@@ -64,7 +64,11 @@ MIN_INSIDER_VALUE = 1.0
 # Yahoo/Stooq/Nasdaq polite pacing.
 MKT_RATE = 4.0
 
-UA_SEC = "CEOTrades Insider-Trade Collector (github.com/karagemop466-tech/CEOTrades)"
+UA_SEC = os.environ.get(
+    "SEC_UA",
+    "CEOTrades Insider-Trade Collector https://github.com/karagemop466-tech/CEOTrades "
+    "karagemop466-tech@users.noreply.github.com",
+)
 UA_MKT = (
     "Mozilla/5.0 (compatible; CEOTrades/1.0; "
     "+https://github.com/karagemop466-tech/CEOTrades)"

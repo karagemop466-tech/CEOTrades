@@ -49,7 +49,8 @@ DATA = os.path.join(HERE, "data")
 
 UA = os.environ.get(
     "SEC_UA",
-    "CEOTrades Insider-Trade Research (github.com/karagemop466-tech/CEOTrades)",
+    "CEOTrades Insider-Trade Research https://github.com/karagemop466-tech/CEOTrades "
+    "karagemop466-tech@users.noreply.github.com",
 )
 
 ZIP_HOSTS = (

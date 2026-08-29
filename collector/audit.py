@@ -40,7 +40,8 @@ import store  # noqa: E402
 
 UA = os.environ.get(
     "SEC_UA",
-    "CEOTrades integrity audit (github.com/karagemop466-tech/CEOTrades)",
+    "CEOTrades integrity audit https://github.com/karagemop466-tech/CEOTrades "
+    "karagemop466-tech@users.noreply.github.com",
 )
 
 ACCESSION_RE = re.compile(r"^\d{10}-\d{2}-\d{6}$")
