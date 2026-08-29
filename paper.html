@@ -17,6 +17,7 @@
         <a href="trades.html">Trades</a>
         <a href="companies.html">Companies</a>
         <a href="insiders.html">Insiders</a>
+        <a href="activity.html">Insider flows</a>
         <a href="analysis.html">Findings</a>
         <a href="irregularities.html">Irregularities</a>
         <a href="about.html">About</a>
@@ -67,7 +68,11 @@ Promise.all([CT.load('data/paper/summary.json'), CT.load('data/paper/positions.j
     n.style.display = 'block';
     n.innerHTML = '<strong>Rule:</strong> ' + CT.esc(s.rule.entry) + '. ' +
       '<strong>Exit:</strong> ' + CT.esc(s.rule.exit) + '. ' +
-      '<strong>Costs:</strong> ' + CT.esc(s.rule.costs) + '.';
+      '<strong>Costs:</strong> ' + CT.esc(s.rule.costs) + '.' +
+      (s.verification ? '<br><strong>Verification:</strong> ' +
+        CT.fmtInt(s.verification.open_positions_checked || 0) + ' open positions checked; ' +
+        CT.fmtInt(s.verification.entry_rule_failures || 0) + ' entry-rule failures; ' +
+        CT.fmtInt(s.verification.arithmetic_failures || 0) + ' arithmetic failures.' : '');
   }
   if (rows.length < s.counts.signals) {
     var d = document.createElement('div');
@@ -86,6 +91,8 @@ Promise.all([CT.load('data/paper/summary.json'), CT.load('data/paper/positions.j
     { key: 'insider_val', label: 'Insider spent', num: true, render: function (r) { return CT.fmtMoney(r.insider_val); }, title: 'Dollar value the insider reported' },
     { key: 'insider_px', label: 'Their px', num: true, render: function (r) { return CT.fmtPx(r.insider_px); } },
     { key: 'entry_px', label: 'Our entry', num: true, render: function (r) { return CT.fmtPx(r.entry_px); }, title: 'Open of the first session after the filing' },
+    { key: 'entry_rule_status', label: 'Entry check', render: function (r) { return '<span class="b ' + (r.entry_rule_status === 'verified' ? 'buy' : r.entry_rule_status === 'invalid' ? 'sell' : 'warn') + '" title="' + CT.esc(r.entry_check || '') + '">' + CT.esc(r.entry_rule_status || '—') + '</span>'; } },
+    { key: 'price_src', label: 'Price src', render: function (r) { return '<span class="sub">' + CT.esc(r.price_src || '—') + '</span>'; } },
     { key: 'gap', label: 'Gap', num: true, render: function (r) { return '<span class="' + CT.pctCls(-CT.num(r.gap)) + '">' + CT.fmtPct(r.gap) + '</span>'; }, title: 'Our entry vs the insider price' },
     { key: 'last_px', label: 'Last', num: true, render: function (r) { return CT.fmtPx(r.last_px); } },
     { key: 'pnl', label: 'P&L', num: true, render: function (r) { return '<span class="' + CT.pctCls(r.pnl) + '">' + CT.fmtUSD(r.pnl) + '</span>'; } },

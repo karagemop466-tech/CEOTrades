@@ -29,6 +29,7 @@ Environment:
 """
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import subprocess
@@ -189,6 +190,10 @@ def write_empty_outputs():
         "stake": build_data.STAKE,
         "counts": {"signals": 0, "open": 0, "awaiting_entry": 0, "no_price": 0},
         "capital": {"deployed": 0, "value": 0, "pnl": 0, "roi": None},
+        "verification": {"entry_rule_failures": 0, "arithmetic_failures": 0,
+                         "open_positions_checked": 0, "price_sources": [],
+                         "line_by_line_review": "No paper rows were available.",
+                         "portfolio_warning": "No holdings were available."},
         "roi": build_data.stats([]), "gap": build_data.stats([]),
         "horizons": {h: build_data.stats([]) for h in
                      ("r1", "r5", "r21", "r63", "r252")},
@@ -226,6 +231,17 @@ def write_empty_outputs():
                                              "suspects": [], "policy": ""}},
         "shards": [], "assurance": {"remote_refetch": "not_performed_by_default"}})
     w("irregularities.json", [])
+    w("insider_activity.json", {
+        "generated": stamp, "target_year": _target_year() or date.today().year,
+        "summary": {"target_year": _target_year() or date.today().year,
+                    "insider_company_pairs": 0, "buy_sell_pairs": 0,
+                    "with_reported_common_shares": 0, "with_priced_holdings": 0,
+                    "reported_holding_value_priced": 0,
+                    "scope": "No data collected yet.",
+                    "full_csv": "data/insider_activity.csv.gz"},
+        "rows": [], "truncated": False, "row_count": 0})
+    with gzip.GzipFile(filename=os.path.join(out, "insider_activity.csv.gz"), mode="wb", compresslevel=9, mtime=0) as gz:
+        gz.write(b"id,target_year,insider,pcik,co,tk,icik,rel,title,n,buy_n,sell_n,other_n,buy_sh,sell_sh,buy_v,sell_v,net_v,buy_sell_overlap,first,last,first_buy,last_buy,first_sell,last_sell,reported_common_shares,holding_groups,latest_holding_fd,mark_d,mark_px,holding_value,price_src,valuation_status,portfolio_scope\n")
     with open(os.path.join(out, "trades.csv"), "w", encoding="utf-8") as f:
         f.write(",".join(build_data.COMPACT_KEYS) + "\n")
 
@@ -265,7 +281,11 @@ def main() -> int:
     log("\nBuilding site data …")
     sys.argv = ["build_data"]
     if target:
-        sys.argv += ["--year", str(target), "--audit-year", str(target), "--offline"]
+        sys.argv += ["--year", str(target), "--audit-year", str(target)]
+        if os.environ.get("CEOTRADES_OFFLINE") == "1":
+            sys.argv.append("--offline")
+        if "CEOTRADES_PRICE_MIN" not in os.environ:
+            sys.argv += ["--price-budget-min", "30"]
     return build_data.main()
 
 

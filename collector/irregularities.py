@@ -27,6 +27,7 @@ CLUSTER_DAYS = 7
 CLUSTER_MIN_VALUE = 25_000.0
 SYNC_SALE_MIN_VALUE = 1_000_000.0
 LARGE_NONCASH_SHARES = 100_000.0
+BUY_SELL_OVERLAP_MIN_VALUE = 25_000.0
 
 SEVERITY_ORDER = {"High": 0, "Medium": 1, "Low": 2, "Informational": 3}
 
@@ -287,6 +288,44 @@ def scan_exercise_then_sale(rows: list[dict]) -> list[dict]:
     return out
 
 
+def scan_buyer_seller_overlap(rows: list[dict]) -> list[dict]:
+    """Flag same-insider same-issuer buy/sell overlap for review.
+
+    This is not inherently suspicious: it may reflect tax planning, trading
+    plans, diversification, option activity, or amended filings. It is useful
+    because the user explicitly wants to track insiders who buy and also sell.
+    """
+    by_pair = defaultdict(list)
+    for r in rows:
+        code = (r.get("code") or "").upper()[:1]
+        if code not in {"P", "S"} or r.get("der"):
+            continue
+        owner = r.get("pcik") or r.get("in") or ""
+        issuer = r.get("icik") or r.get("tk") or r.get("co") or ""
+        if owner and issuer:
+            by_pair[(owner, issuer)].append(r)
+    out = []
+    for (_owner, _issuer), rs in by_pair.items():
+        buys = [r for r in rs if (r.get("code") or "").upper()[:1] == "P"]
+        sells = [r for r in rs if (r.get("code") or "").upper()[:1] == "S"]
+        if not buys or not sells:
+            continue
+        buy_v = sum(abs(fnum(r.get("val")) or 0.0) for r in buys)
+        sell_v = sum(abs(fnum(r.get("val")) or 0.0) for r in sells)
+        if max(buy_v, sell_v) < BUY_SELL_OVERLAP_MIN_VALUE:
+            continue
+        all_rows = sorted(buys + sells, key=lambda r: (r.get("fd") or "", r.get("td") or "", r.get("acc") or ""))
+        out.append(base_item(
+            "Same-insider buy/sell overlap",
+            "Low",
+            all_rows,
+            f"Same insider reported code-P purchases totaling {money(buy_v)} and code-S sales totaling {money(sell_v)} for the same issuer.",
+            "Buy/sell overlap is a context flag, not a legal conclusion. Review the accessions and footnotes to determine whether sales are planned, tax-related, derivative-linked or discretionary.",
+            f"Same reporting owner + same issuer + at least one non-derivative code-P row and one non-derivative code-S row in the target year; max(buy value, sell value) >= {money(BUY_SELL_OVERLAP_MIN_VALUE)}.",
+        ))
+    return out
+
+
 def scan_large_noncash(rows: list[dict]) -> list[dict]:
     out = []
     for r in rows:
@@ -333,6 +372,7 @@ def scan(data_dir: str = store.DATA, target_year: int | None = None,
     items.extend(scan_large_transactions(rows))
     items.extend(scan_cluster_buys(rows))
     items.extend(scan_synchronized_sales(rows))
+    items.extend(scan_buyer_seller_overlap(rows))
     items.extend(scan_exercise_then_sale(rows))
     items.extend(scan_large_noncash(rows))
 

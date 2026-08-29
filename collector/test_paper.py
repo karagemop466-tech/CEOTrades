@@ -165,6 +165,15 @@ def main() -> int:
          "sh": 10.0, "px": 20.0, "val": 200.0, "ad": "D", "af": 5.0, "di": "D",
          "der": 0, "period": "2025-08-08", "nature": "", "under": "",
          "under_sh": None, "xp": None, "exp": "", "timely": "", "swap": ""},
+        # Same insider later sells common stock — counted as buy/sell overlap,
+        # never paper-traded, and it updates the reported held-after balance.
+        {"fd": "2025-08-14", "td": "2025-08-13", "form": "4", "amend": 0,
+         "acc": "A4", "co": "Test Co", "tk": "T", "icik": "111", "in": "JANE DOE",
+         "pcik": "222", "own_n": 1, "rel": "Officer", "title": "Chief Executive Officer",
+         "code": "S", "ct": "sell", "side": "sell", "sec": "Common Stock",
+         "sh": 20.0, "px": 15.0, "val": 300.0, "ad": "D", "af": 900.0, "di": "D",
+         "der": 0, "period": "2025-08-13", "nature": "", "under": "",
+         "under_sh": None, "xp": None, "exp": "", "timely": "", "swap": ""},
         # An option grant — counted, never paper-traded.
         {"fd": "2025-08-12", "td": "2025-08-08", "form": "4", "amend": 0,
          "acc": "A3", "co": "Test Co", "tk": "T", "icik": "111", "in": "JANE DOE",
@@ -179,7 +188,7 @@ def main() -> int:
         bb.DATA = din
         bb.merge_into_store(rows)
         got = list(store.iter_rows(din))
-        check("store streams all rows", len(got), 4)
+        check("store streams all rows", len(got), 5)
         check("numeric coercion from CSV", got[0]["sh"] in (60.0, 40.0, 10.0, 500.0), True)
 
         # Seed the price cache so the build runs fully offline.
@@ -188,12 +197,12 @@ def main() -> int:
         bd.save_bars("T", bars(px), "test")
 
         agg = bd.collect(din)
-        check("total rows aggregated", agg["totals"]["n"], 4)
-        check("distinct filings", agg["filings"], 3)
+        check("total rows aggregated", agg["totals"]["n"], 5)
+        check("distinct filings", agg["filings"], 4)
         check("companies", len(agg["companies"]), 1)
         check("insiders", len(agg["insiders"]), 2)
         check("buy value totalled", round(agg["totals"]["buy"], 2), 1000.00)
-        check("sell value totalled", round(agg["totals"]["sell"], 2), 200.00)
+        check("sell value totalled", round(agg["totals"]["sell"], 2), 500.00)
         check("two P lots -> one signal", len(agg["signals"]), 1)
         sg = list(agg["signals"].values())[0]
         check("signal aggregates shares", sg["insider_sh"], 100.0)
@@ -205,20 +214,31 @@ def main() -> int:
         check("build exit code", rc, 0)
 
         summary = json.load(open(os.path.join(dout, "summary.json")))
-        check("summary trade count", summary["counts"]["trades"], 4)
+        check("summary trade count", summary["counts"]["trades"], 5)
         check("summary companies", summary["counts"]["companies"], 1)
-        check("summary net flow", summary["value"]["net"], 800.0)
+        check("summary net flow", summary["value"]["net"], 500.0)
 
         paper = json.load(open(os.path.join(dout, "paper", "summary.json")))
         check("one paper position", paper["counts"]["open"], 1)
         check("deployed = one $10k stake", paper["capital"]["deployed"], 10000.0)
         check("paper value = 800sh * 20.00", paper["capital"]["value"], 16000.0)
         check("paper roi +60%", paper["capital"]["roi"], 0.6)
+        check("paper entry verification clean", paper["verification"]["entry_rule_failures"], 0)
+        check("paper arithmetic verification clean", paper["verification"]["arithmetic_failures"], 0)
         check("findings generated", len(paper["findings"]) > 0, True)
+
+        activity = json.load(open(os.path.join(dout, "insider_activity.json")))
+        check("activity pairs", activity["summary"]["insider_company_pairs"], 2)
+        check("activity buy+sell overlap", activity["summary"]["buy_sell_pairs"], 1)
+        jane = next(r for r in activity["rows"] if r["pcik"] == "222")
+        check("Jane overlap true", jane["buy_sell_overlap"], True)
+        check("Jane reported shares from latest held-after", jane["reported_common_shares"], 900.0)
+        check("Jane holding value marked to last close", jane["holding_value"], 18000.0)
+        check("activity review link emitted", bool(jane["review_links"]), True)
 
         cos = json.load(open(os.path.join(dout, "companies.json")))
         check("company row", cos[0]["co"], "Test Co")
-        check("company trade count", cos[0]["n"], 4)
+        check("company trade count", cos[0]["n"], 5)
         check("company insider count", cos[0]["ins"], 2)
 
         ins = json.load(open(os.path.join(dout, "insiders.json")))
@@ -227,13 +247,15 @@ def main() -> int:
         with gzip.open(os.path.join(dout, "csv", "trades-2025.csv.gz"),
                        "rt", encoding="utf-8") as f:
             hist = list(csv.DictReader(f))
-        check("year CSV has every row", len(hist), 4)
+        check("year CSV has every row", len(hist), 5)
 
         with gzip.open(os.path.join(dout, "paper", "positions.csv.gz"),
                        "rt", encoding="utf-8") as f:
             pos = list(csv.DictReader(f))
         check("positions CSV", len(pos), 1)
         check("positions CSV roi", pos[0]["roi"], "0.6")
+        check("positions CSV entry verified", pos[0]["entry_rule_status"], "verified")
+        check("positions CSV SEC link", pos[0]["edgar_url"].startswith("https://www.sec.gov/Archives/edgar/data/111/"), True)
     finally:
         bb.DATA = orig_data
         shutil.rmtree(tmp)

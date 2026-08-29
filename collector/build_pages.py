@@ -19,6 +19,7 @@ PAGES = [
     ("trades.html", "trades", "Trades"),
     ("companies.html", "companies", "Companies"),
     ("insiders.html", "insiders", "Insiders"),
+    ("activity.html", "activity", "Insider flows"),
     ("analysis.html", "analysis", "Findings"),
     ("irregularities.html", "irregularities", "Irregularities"),
     ("about.html", "about", "About"),
@@ -92,6 +93,7 @@ INDEX_BODY = """
   <a href="trades.html"><div class="t">🧾 All trades</div><div class="d">Search and filter the full transaction tape by ticker, insider, code and date.</div></a>
   <a href="companies.html"><div class="t">🏢 Companies</div><div class="d">Insider activity aggregated per issuer, with buy/sell flow and net dollars.</div></a>
   <a href="insiders.html"><div class="t">👤 Insiders</div><div class="d">Directors, officers and 10% owners ranked by activity and net flow.</div></a>
+  <a href="activity.html"><div class="t">🔁 Insider flows</div><div class="d">Track insiders who both buy and sell, with reported post-transaction holdings and review links.</div></a>
   <a href="analysis.html"><div class="t">🔍 Findings</div><div class="d">ROI by role, conviction size and holding period, plus filing-lag statistics.</div></a>
   <a href="irregularities.html"><div class="t">⚠️ Irregularities</div><div class="d">Automated review flags for coverage gaps, large transactions, clusters and data-quality issues.</div></a>
   <a href="about.html"><div class="t">📖 Methodology</div><div class="d">Exactly how signals, entries and returns are computed — and the caveats.</div></a>
@@ -202,7 +204,11 @@ Promise.all([CT.load('data/paper/summary.json'), CT.load('data/paper/positions.j
     n.style.display = 'block';
     n.innerHTML = '<strong>Rule:</strong> ' + CT.esc(s.rule.entry) + '. ' +
       '<strong>Exit:</strong> ' + CT.esc(s.rule.exit) + '. ' +
-      '<strong>Costs:</strong> ' + CT.esc(s.rule.costs) + '.';
+      '<strong>Costs:</strong> ' + CT.esc(s.rule.costs) + '.' +
+      (s.verification ? '<br><strong>Verification:</strong> ' +
+        CT.fmtInt(s.verification.open_positions_checked || 0) + ' open positions checked; ' +
+        CT.fmtInt(s.verification.entry_rule_failures || 0) + ' entry-rule failures; ' +
+        CT.fmtInt(s.verification.arithmetic_failures || 0) + ' arithmetic failures.' : '');
   }
   if (rows.length < s.counts.signals) {
     var d = document.createElement('div');
@@ -221,6 +227,8 @@ Promise.all([CT.load('data/paper/summary.json'), CT.load('data/paper/positions.j
     { key: 'insider_val', label: 'Insider spent', num: true, render: function (r) { return CT.fmtMoney(r.insider_val); }, title: 'Dollar value the insider reported' },
     { key: 'insider_px', label: 'Their px', num: true, render: function (r) { return CT.fmtPx(r.insider_px); } },
     { key: 'entry_px', label: 'Our entry', num: true, render: function (r) { return CT.fmtPx(r.entry_px); }, title: 'Open of the first session after the filing' },
+    { key: 'entry_rule_status', label: 'Entry check', render: function (r) { return '<span class="b ' + (r.entry_rule_status === 'verified' ? 'buy' : r.entry_rule_status === 'invalid' ? 'sell' : 'warn') + '" title="' + CT.esc(r.entry_check || '') + '">' + CT.esc(r.entry_rule_status || '—') + '</span>'; } },
+    { key: 'price_src', label: 'Price src', render: function (r) { return '<span class="sub">' + CT.esc(r.price_src || '—') + '</span>'; } },
     { key: 'gap', label: 'Gap', num: true, render: function (r) { return '<span class="' + CT.pctCls(-CT.num(r.gap)) + '">' + CT.fmtPct(r.gap) + '</span>'; }, title: 'Our entry vs the insider price' },
     { key: 'last_px', label: 'Last', num: true, render: function (r) { return CT.fmtPx(r.last_px); } },
     { key: 'pnl', label: 'P&L', num: true, render: function (r) { return '<span class="' + CT.pctCls(r.pnl) + '">' + CT.fmtUSD(r.pnl) + '</span>'; } },
@@ -482,6 +490,99 @@ CT.load('data/insiders.json').then(function (rows) {
 
 # ---------------------------------------------------------------------------
 
+ACTIVITY_BODY = """
+<div class="page-head">
+  <h1>Insider flows and reported holdings</h1>
+  <p>Tracks each insider/company pair in the published target year: code-P buys,
+     code-S sells, whether the same insider did both, and the latest as-filed
+     post-transaction common-share holding we can quote from SEC fields. Holding
+     values are shown only when a real market close is available.</p>
+</div>
+
+<div class="grid g4" id="kpis"></div>
+<div class="note" id="scope"></div>
+
+<h2 class="sec">Insider/company pairs <small id="sub"></small></h2>
+<div class="controls">
+  <input type="search" id="q" placeholder="Search insider, company or ticker…">
+  <select id="overlap"><option value="">All pairs</option><option value="both">Bought and sold</option><option value="buy">Bought only / has buys</option><option value="sell">Sold only / has sells</option></select>
+  <select id="holding"><option value="">All holdings</option><option value="shares">Has reported shares</option><option value="priced">Has priced holding value</option></select>
+  <button class="btn" id="csv">Export view (CSV)</button>
+  <a class="btn" href="data/insider_activity.csv.gz" download>Full activity (.csv.gz)</a>
+</div>
+<div class="card tight" id="tbl"></div>
+"""
+
+ACTIVITY_JS = """
+Promise.all([CT.load('data/insider_activity.json'), CT.load('data/audit.json').catch(function(){return null;})])
+.then(function (r) {
+  var payload = r[0] || {}, audit = r[1];
+  var s = payload.summary || {}, rows = payload.rows || [];
+  document.getElementById('kpis').innerHTML =
+    CT.statCard('Insider/company pairs', CT.fmtInt(s.insider_company_pairs || 0), 'target ' + (payload.target_year || '—')) +
+    CT.statCard('Buy + sell overlap', CT.fmtInt(s.buy_sell_pairs || 0), 'same insider, same issuer') +
+    CT.statCard('Reported share holdings', CT.fmtInt(s.with_reported_common_shares || 0), 'latest SEC held-after field') +
+    CT.statCard('Priced holding value', CT.fmtMoney(s.reported_holding_value_priced || 0), CT.fmtInt(s.with_priced_holdings || 0) + ' priced pairs');
+  var note = CT.esc(s.scope || 'Computed from stored SEC fields only.');
+  if (audit && audit.completeness && !audit.completeness.complete) {
+    note += '<br><strong>Coverage warning:</strong> ' + CT.esc(audit.completeness.status || 'incomplete_or_unproven') +
+      ' — holdings and buy/sell overlap are limited by the incomplete local corpus.';
+  }
+  document.getElementById('scope').innerHTML = note;
+  document.getElementById('sub').textContent = payload.truncated ?
+    'showing ' + CT.fmtInt(rows.length) + ' of ' + CT.fmtInt(payload.row_count) + ' pairs' :
+    CT.fmtInt(rows.length) + ' pairs';
+
+  var cols = [
+    { key: 'buy_sell_overlap', label: 'Buy+Sell', render: function (x) { return x.buy_sell_overlap ? '<span class="b warn">both</span>' : '<span class="b neutral">—</span>'; } },
+    { key: 'tk', label: 'Ticker', render: function (x) { return x.tk ? '<span class="ticker">' + CT.esc(x.tk) + '</span>' : '<span class="sub">—</span>'; } },
+    { key: 'co', label: 'Company', render: function (x) { return '<div class="trunc" title="' + CT.esc(x.co) + '">' + CT.esc(CT.titleCase(x.co || '')) + '</div>'; } },
+    { key: 'insider', label: 'Insider', render: function (x) { return '<div class="trunc" title="' + CT.esc(x.insider) + '">' + CT.esc(CT.titleCase(x.insider || '')) + '</div><div class="sub">' + CT.esc(x.title || x.rel || '') + '</div>'; } },
+    { key: 'buy_n', label: 'Buys', num: true, render: function (x) { return CT.fmtInt(x.buy_n); } },
+    { key: 'sell_n', label: 'Sells', num: true, render: function (x) { return CT.fmtInt(x.sell_n); } },
+    { key: 'buy_v', label: 'Bought', num: true, render: function (x) { return '<span class="pos">' + CT.fmtMoney(x.buy_v) + '</span>'; } },
+    { key: 'sell_v', label: 'Sold', num: true, render: function (x) { return '<span class="neg">' + CT.fmtMoney(x.sell_v) + '</span>'; } },
+    { key: 'net_v', label: 'Net', num: true, render: function (x) { return '<strong class="' + CT.pctCls(x.net_v) + '">' + CT.fmtMoney(x.net_v) + '</strong>'; } },
+    { key: 'reported_common_shares', label: 'Reported shares', num: true, render: function (x) { return CT.fmtInt(x.reported_common_shares); }, title: 'Latest SEC shares-owned-following-transaction common-equity amount, summed across direct/indirect buckets' },
+    { key: 'holding_value', label: 'Holding value', num: true, render: function (x) { return CT.fmtMoney(x.holding_value); } },
+    { key: 'price_src', label: 'Price src', render: function (x) { return '<span class="sub">' + CT.esc(x.price_src || x.valuation_status || '—') + '</span>'; } },
+    { key: 'last', label: 'Last filed', cls: 'nowrap' },
+    { key: 'review_links', label: 'SEC review', sort: false, render: function (x) {
+        return (x.review_links || []).slice(0, 3).map(function (f) {
+          var url = f.edgar_url || CT.edgar(f.acc, f.icik || x.icik);
+          return '<a href="' + url + '" target="_blank" rel="noopener">' + CT.esc(f.acc) + ' ↗</a>';
+        }).join('<br>');
+      } }
+  ];
+  var t = new CT.Table({ mount: '#tbl', rows: rows, cols: cols, pageSize: 50, sortKey: 'net_v', sortDir: -1,
+    empty: 'No insider/company activity rows in the published target-year corpus.' });
+
+  function apply() {
+    var q = document.getElementById('q').value.trim().toLowerCase();
+    var ov = document.getElementById('overlap').value;
+    var hold = document.getElementById('holding').value;
+    t.filter(function (x) {
+      if (ov === 'both' && !x.buy_sell_overlap) return false;
+      if (ov === 'buy' && !(CT.num(x.buy_n) > 0)) return false;
+      if (ov === 'sell' && !(CT.num(x.sell_n) > 0)) return false;
+      if (hold === 'shares' && CT.num(x.reported_common_shares) === null) return false;
+      if (hold === 'priced' && CT.num(x.holding_value) === null) return false;
+      if (!q) return true;
+      var hay = [x.tk, x.co, x.insider, x.rel, x.title].join(' ').toLowerCase();
+      return hay.indexOf(q) >= 0;
+    });
+  }
+  document.getElementById('q').addEventListener('input', CT.debounce(apply, 200));
+  document.getElementById('overlap').addEventListener('change', apply);
+  document.getElementById('holding').addEventListener('change', apply);
+  document.getElementById('csv').addEventListener('click', function () {
+    CT.download('ceotrades-insider-activity-view.csv', CT.toCSV(t.view, cols));
+  });
+}).catch(function (e) { CT.fail(document.getElementById('tbl'), e); });
+"""
+
+# ---------------------------------------------------------------------------
+
 ANALYSIS_BODY = """
 <div class="page-head">
   <h1>Findings</h1>
@@ -489,6 +590,7 @@ ANALYSIS_BODY = """
      real entry prices at the first open after each filing — not from the insiders' own fills.</p>
 </div>
 <div class="card"><h3>Headline findings</h3><div id="findings"></div></div>
+<div class="card" style="margin-top:16px"><h3>Paper-book verification</h3><div id="verify"></div></div>
 
 <h2 class="sec">Return by holding period <small>median return measured from our entry price</small></h2>
 <div class="card tight"><div id="hz"></div></div>
@@ -542,6 +644,14 @@ Promise.all([CT.load('data/paper/summary.json'), CT.load('data/summary.json')])
   document.getElementById('findings').innerHTML = (p.findings || []).map(function (f, i) {
     return '<div class="finding"><div class="n">' + (i + 1) + '</div><div>' + CT.esc(f) + '</div></div>';
   }).join('') || '<div class="empty">No findings yet.</div>';
+  var vf = p.verification || {};
+  var srcs = (vf.price_sources || []).map(function (x) { return CT.esc(x.source) + ': ' + CT.fmtInt(x.n); }).join(' · ');
+  document.getElementById('verify').innerHTML =
+    '<p><strong>Entry rule failures:</strong> ' + CT.fmtInt(vf.entry_rule_failures || 0) +
+    ' · <strong>Arithmetic failures:</strong> ' + CT.fmtInt(vf.arithmetic_failures || 0) +
+    ' · <strong>Open positions checked:</strong> ' + CT.fmtInt(vf.open_positions_checked || 0) + '</p>' +
+    '<p class="sub">' + CT.esc(vf.line_by_line_review || '') + '</p>' +
+    '<p class="sub">Price sources: ' + (srcs || '—') + '</p>';
 
   var hz = Object.keys(LBL).filter(function (k) { return p.horizons && p.horizons[k]; })
     .map(function (k) { var o = Object.assign({}, p.horizons[k]); o.h = LBL[k]; return o; });
@@ -737,6 +847,16 @@ ABOUT_BODY = """
 </div>
 
 <div class="card" style="margin-top:16px">
+  <h3>Insider flow and reported holdings</h3>
+  <p>The Insider flows page groups rows by reporting-owner CIK and issuer CIK to show whether
+     the same insider both bought and sold the same issuer in the published target year.</p>
+  <p>Reported holding size comes from the SEC <code>sharesOwnedFollowingTransaction</code>
+     / <code>SHRS_OWND_FOLWNG_TRANS</code> field on the latest non-derivative common-equity row
+     for each direct/indirect ownership bucket. It is not a reconstructed brokerage account,
+     and it does not include unfiled holdings or assets outside the issuer.</p>
+</div>
+
+<div class="card" style="margin-top:16px">
   <h3>Automation</h3>
   <p>A GitHub Actions workflow runs nightly: it fetches target-year filings from official SEC
      bulk archives plus the EDGAR daily index, refreshes prices when real market data is reachable,
@@ -789,6 +909,9 @@ SPECS = [
     ("insiders.html", "insiders", "Insiders",
      "Directors, officers and 10% owners ranked by insider trading activity.",
      INSIDERS_BODY, INSIDERS_JS),
+    ("activity.html", "activity", "Insider flows",
+     "Buyer/seller overlap and reported post-transaction holding estimates by insider and issuer.",
+     ACTIVITY_BODY, ACTIVITY_JS),
     ("analysis.html", "analysis", "Findings",
      "Forward-test results: ROI by role, purchase size, holding period and year.",
      ANALYSIS_BODY, ANALYSIS_JS),

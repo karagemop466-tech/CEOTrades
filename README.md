@@ -42,6 +42,9 @@ Two properties are enforced in code and covered by tests:
 
 The **gap** column shows what following costs: our entry price versus the
 insider's average price. A positive gap means the public follower paid more.
+Every paper row also carries an entry-rule verification status, market-data
+source, SEC accession/issuer CIK and EDGAR review link so the entry date, entry
+open, latest close, P&L and ROI can be audited line by line.
 
 ---
 
@@ -103,6 +106,7 @@ real market data sources; absent prices remain `no_price` in the paper book.
 | [Trades](https://karagemop466-tech.github.io/CEOTrades/trades.html) | Searchable transaction tape + full history download per year |
 | [Companies](https://karagemop466-tech.github.io/CEOTrades/companies.html) | Insider activity aggregated per issuer, with drill-down |
 | [Insiders](https://karagemop466-tech.github.io/CEOTrades/insiders.html) | Directors, officers and 10% owners ranked by activity |
+| [Insider flows](https://karagemop466-tech.github.io/CEOTrades/activity.html) | Same-insider buy/sell overlap plus reported held-after share balances and review links |
 | [Findings](https://karagemop466-tech.github.io/CEOTrades/analysis.html) | ROI by role, purchase size, holding period and year |
 | [Irregularities](https://karagemop466-tech.github.io/CEOTrades/irregularities.html) | Automated review flags and audit coverage warnings |
 | [About](https://karagemop466-tech.github.io/CEOTrades/about.html) | Methodology, data dictionary, caveats |
@@ -119,7 +123,7 @@ collector/
   store.py           streaming reader over both formats, de-duplicating
   audit.py           row-level integrity/completeness audit -> data/audit.json
   irregularities.py  deterministic review flags -> data/irregularities.json
-  build_data.py      aggregation + $10k paper simulation -> data/*.json
+  build_data.py      aggregation + $10k paper simulation + insider-flow/holding analysis -> data/*.json
   build_site.py      orchestrator: resumable backfill, then build
   build_pages.py     static HTML generator
   test_bulk.py       parser tests      (offline)
@@ -165,9 +169,10 @@ python3 collector/audit.py --year 2025  # completeness + row-integrity report
 
 `test_paper.py` recomputes the arithmetic by hand ($10,000 at an open of
 $12.50 must be exactly 800 shares) and asserts that a simulation run as of the
-filing date produces **no** entry price. `test_site.py` independently
+filing date produces **no** entry price. It also checks same-insider buy/sell
+overlap and latest SEC held-after balances. `test_site.py` independently
 re-derives `shares`, `mtm`, `pnl` and `roi` from the published JSON and
-verifies `entry_d > fd` for every position.
+verifies `entry_d > fd` plus zero entry-rule/arithmetic failures.
 
 Two real defects were caught this way: an identity key using `or ""` that
 corrupted legitimate `0` values and broke gzip idempotency, and an incorrect
@@ -186,6 +191,9 @@ return it lacked data for.
 - **Delisted names** often have no retrievable history — surfaced as `no_price`.
 - **Open positions only.** Aggregate ROI is a buy-and-hold figure mixing
   positions of very different ages, and is not annualised.
+- **Reported holdings are not full brokerage portfolios.** The Insider flows
+  page uses SEC post-transaction common-share balances for the issuer only; it
+  does not infer unfiled trades, outside accounts or non-issuer assets.
 - **As-filed data.** The SEC does not correct filer errors, and neither do we.
 
 ---

@@ -17,6 +17,7 @@
         <a href="trades.html">Trades</a>
         <a href="companies.html">Companies</a>
         <a href="insiders.html">Insiders</a>
+        <a href="activity.html">Insider flows</a>
         <a href="analysis.html">Findings</a>
         <a href="irregularities.html">Irregularities</a>
         <a href="about.html" class="active">About</a>
@@ -83,6 +84,16 @@
     <li><strong>As-filed data.</strong> The SEC publishes filings without correcting them. Fat-fingered
       share counts and prices exist in the source and are preserved here rather than quietly edited.</li>
   </ul>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h3>Insider flow and reported holdings</h3>
+  <p>The Insider flows page groups rows by reporting-owner CIK and issuer CIK to show whether
+     the same insider both bought and sold the same issuer in the published target year.</p>
+  <p>Reported holding size comes from the SEC <code>sharesOwnedFollowingTransaction</code>
+     / <code>SHRS_OWND_FOLWNG_TRANS</code> field on the latest non-derivative common-equity row
+     for each direct/indirect ownership bucket. It is not a reconstructed brokerage account,
+     and it does not include unfiled holdings or assets outside the issuer.</p>
 </div>
 
 <div class="card" style="margin-top:16px">
