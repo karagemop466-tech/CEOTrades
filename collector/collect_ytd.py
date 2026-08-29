@@ -29,6 +29,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
 import bulk_backfill as bb  # noqa: E402
+import runlog  # noqa: E402
 
 DATA = os.path.join(HERE, "data")
 
@@ -117,6 +118,7 @@ def run_daily_collect(start: date, end: date, data_dir: str, rate: float,
 
 
 def main() -> int:
+    runlog.start("collect_ytd")
     today = asof_today()
     ap = argparse.ArgumentParser(description="Collect official SEC insider trades for a target year-to-date window.")
     ap.add_argument("--year", type=int, default=today.year)

@@ -117,6 +117,46 @@ def main() -> int:
     p4 = bd.simulate(sig, [], "2025-08-19")
     check("no bars -> no_price", p4["status"], "no_price")
 
+    print("5b. price-window guards (no phantom entries from short history)")
+    # A 1-year-style fetch for an older filing: the first bar AFTER the filing
+    # date is months away. Filling there would fabricate a wrong entry.
+    short = bars([("2025-11-10", 30.0, 30.5),
+                  ("2025-11-11", 31.0, 31.5),
+                  ("2025-11-12", 32.0, 32.5)])
+    g1 = bd.simulate(sig, short, "2025-11-12")
+    check("late history -> no_price", g1["status"], "no_price")
+    check("late history -> entry_window_missing", g1["entry_rule_status"], "entry_window_missing")
+    check("late history -> no entry price", g1["entry_px"], None)
+    check("late history -> no roi", g1["roi"], None)
+    check("late history -> gap recorded", g1["entry_gap_days"], 90)
+    # Series that ends before the filing date: delisted/uncovered, not pending.
+    old = bars([("2025-07-01", 10.0, 10.5), ("2025-07-02", 11.0, 11.5)])
+    g2 = bd.simulate(sig, old, "2025-11-12")
+    check("series ends pre-filing -> no_price", g2["status"], "no_price")
+    check("series ends pre-filing -> no_bars_after_filing", g2["entry_rule_status"], "no_bars_after_filing")
+    check("series ends pre-filing -> no entry price", g2["entry_px"], None)
+    # A 3-day gap (filing Friday -> Tuesday session after a holiday Monday) is
+    # normal and must still open.
+    ok_bars = bars([("2025-08-12", 11.0, 11.5),
+                    ("2025-08-15", 12.50, 13.00),
+                    ("2025-08-18", 13.00, 13.50)])
+    g3 = bd.simulate(sig, ok_bars, "2025-08-18")
+    check("3-day weekend/holiday gap still opens", g3["status"], "open")
+    check("3-day gap entry price", g3["entry_px"], 12.50)
+    # The standalone engine (paper_trade.simulate_one) must behave the same.
+    import paper_trade as pt
+    sig2 = dict(sig)
+    sig2.update({"acc": "A1", "form": "4", "amend": 0, "icik": "111", "pcik": "222",
+                 "insider": "JANE DOE", "sec": "Common Stock", "lots": 1})
+    q1 = pt.simulate_one(sig2, short, "2025-11-12")
+    check("engine: late history -> no_price", q1["status"], "no_price")
+    check("engine: late history -> no entry price", q1["entry_px"], None)
+    q2 = pt.simulate_one(sig2, old, "2025-11-12")
+    check("engine: series ends pre-filing -> no_price", q2["status"], "no_price")
+    q3 = pt.simulate_one(sig2, bars(px), "2025-08-19")
+    check("engine: normal case still opens", q3["status"], "open")
+    check("engine: normal entry price", q3["entry_px"], 12.5)
+
     print("6. statistics")
     s = bd.stats([0.1, -0.1, 0.3, 0.5, -0.2])
     check("n", s["n"], 5)

@@ -38,6 +38,7 @@ import time
 from datetime import date
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
 DATA = os.path.join(HERE, "data")
@@ -45,6 +46,7 @@ STATE = os.path.join(DATA, "backfill.json")
 
 import build_data  # noqa: E402
 import bulk_backfill as bb  # noqa: E402
+import runlog  # noqa: E402
 import store  # noqa: E402
 
 
@@ -285,9 +287,54 @@ def main() -> int:
         if os.environ.get("CEOTRADES_OFFLINE") == "1":
             sys.argv.append("--offline")
         if "CEOTRADES_PRICE_MIN" not in os.environ:
-            sys.argv += ["--price-budget-min", "30"]
+            sys.argv += ["--price-budget-min", "70"]
     return build_data.main()
 
 
+def commit_diagnostics() -> None:
+    """When running in GitHub Actions, commit the run's log files and source
+    manifest even when a build stage failed, so the failure is diagnosable
+    from the repository itself. Never commits trade or price data."""
+    import subprocess
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    ref = os.environ.get("GITHUB_REF", "")
+    if not ref.startswith("refs/heads/"):
+        return
+    paths = ["collector/data/logs", "collector/data/source_manifest.json",
+             "collector/data/stats.json", "collector/data/backfill.json"]
+    try:
+        subprocess.run(["git", "config", "user.name", "ceotrades-bot"], cwd=ROOT, check=False)
+        subprocess.run(["git", "config", "user.email",
+                        "41898282+ceotrades-bot@users.noreply.github.com"], cwd=ROOT, check=False)
+        subprocess.run(["git", "add", "--"] + paths, cwd=ROOT, check=False)
+        staged = subprocess.run(["git", "diff", "--cached", "--quiet"],
+                                cwd=ROOT, check=False).returncode != 0
+        if not staged:
+            log("No diagnostics to commit.")
+            return
+        from datetime import datetime, timezone
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        subprocess.run(["git", "commit", "-m",
+                        f"chore(diagnostics): collection failure logs {stamp}"], cwd=ROOT, check=False)
+        pushed = subprocess.run(["git", "push", "origin", f"HEAD:{ref}"], cwd=ROOT, check=False)
+        if pushed.returncode != 0:
+            subprocess.run(["git", "pull", "--rebase", "origin", ref], cwd=ROOT, check=False)
+            subprocess.run(["git", "push", "origin", f"HEAD:{ref}"], cwd=ROOT, check=False)
+    except OSError as e:  # noqa: PERF203
+        log(f"diagnostics commit failed: {e}")
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        _rc = main()
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        runlog.start("build_site")
+        traceback.print_exc()
+        _rc = 1
+    if _rc != 0:
+        commit_diagnostics()
+    sys.exit(_rc)
