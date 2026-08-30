@@ -56,8 +56,50 @@ ROI/win-rate statistics and counted in the `split` block of `paper/summary.json`
 
 | Item | Why |
 |---|---|
+
 | **VEEE ×2** | 1:37 reverse split (2026-04-30) executed under a reincorporation since found defective; ratification pending. Return shown on the adjusted series; share counts contingent on ratification. Manual review: [8-K 2026-08-05](https://www.sec.gov/Archives/edgar/data/1855509/000173112226001019/0001731122-26-001019-index.htm) |
 | **DBGI** | Entry 2026-06-10 pre-split, mark post-split (1:40, 2026-07-24). Corrected ROI −84.56%. Manual review: [8-K 2026-07-22](https://www.sec.gov/Archives/edgar/data/1668010/000149315226034260/0001493152-26-034260-index.htm) |
 | Buy/sell overlap | **0** same-insider same-issuer P and S in this 2026 slice (as filed to date). |
 | Portfolio size | `data/insider_portfolios.json` — latest SEC held-after shares; only paper tickers with market bars are marked. Not a brokerage statement. |
 | Coverage | Local store is **not** yet a full EDGAR year (audit `incomplete_or_unproven`); the nightly backfill + quarterly archives are filling the gaps. |
+
+## Buy/sell + holdings
+
+Yes: `activity.html` / `insider_activity.json` (`buy_sell_overlap`).  
+Yes: `insider_portfolios.json` sums as-filed common shares across issuers the person filed on, marked at last close when bars exist.
+
+---
+
+## Update — flags are now enforced in code (2026-08-30)
+
+The manual "split" flags above are now automatic, not advisory:
+
+- **DBGI confirmed as a split artifact, and its fake gain is withheld.** Digital
+  Brands Group executed a **1-for-40 reverse split effective 2026-07-24**
+  ([company/StockTitan](https://www.stocktitan.net/news/DBGI/),
+  [Investing.com](https://ng.investing.com/news/stock-market-news/dbgi-announces-1for40-reverse-stock-split-effective-july-24-93CH-2605838)).
+  The earlier "+517%" ROI compared a pre-split entry to a post-split mark on
+  different share bases. A follower's 9,174 shares became ~229, worth ~$1,544 —
+  roughly **−85%**, not +517%. The simulator now detects the straddle (≥3×
+  one-session jump or an implausible short-horizon return), **withholds the
+  headline ROI/P&L** (`roi_review=true`, raw value kept in `roi_reported`), and
+  raises a **High** irregularity. See `data/irregularities.json`.
+- **ABSI +233% verified as real**, not an artifact: backed by the Eli
+  Lilly–participated $100M equity offering and AI drug-discovery news
+  ([Simply Wall St notes +250% over six months](https://simplywall.st/stocks/us/pharmaceuticals-biotech/nasdaq-absi/absci)).
+  It remains flagged only for line-by-line confirmation; its ROI is retained.
+- **VEEE ×2** gap stays a split-adjustment flag; its ROI is likewise withheld
+  when a straddle is detected.
+- **Backtest (`data/backtest/`).** Every tracked code-P buy now also gets a
+  verified round trip: entry at the next-session open and **exit at the +252
+  session close** (delisted names exit at the last observed close and are
+  flagged). Positions too young for 252 sessions stay open; nothing is estimated.
+  Coverage reconciliation (`coverage.json`) proves each signal is classified.
+- **Collection resilience.** SEC `HTTP 403` (fair-access block) is no longer
+  treated like a 404: bulk quarters and daily files are retried with long
+  backoff and alternate EDGAR front-ends, and a blocked quarter is retried on
+  later runs instead of being permanently tombstoned. The SEC data sets are
+  published through **2026 Q2** ([official listing](https://www.sec.gov/data-research/sec-markets-data-sets/insider-transactions-data-sets));
+  the missing 2026-01/02 window is a collection gap to be back-filled, not an
+  absence of data.
+

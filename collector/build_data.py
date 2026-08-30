@@ -1391,6 +1391,34 @@ def get_bars(tk: str, offline: bool = False):
 # Simulation — $10,000 at the first open strictly after the filing is public
 # ---------------------------------------------------------------------------
 
+def find_split_in_window(bars, start_d: str, end_d: str):
+    """Detect an UNADJUSTED corporate-action discontinuity (reverse/forward
+    split) between two dates by looking for a >=3x close-to-close jump with a
+    reciprocal volume change, which a daily move cannot be.
+
+    Returns the date of the discontinuity (first bar whose close is >=3x or
+    <=1/3 of the previous close) within [start_d, end_d], or None. Used to
+    blank any mark-to-market ROI that straddles two different share bases.
+    Adjusted series (Yahoo/Stooq) never trigger this; raw series (Nasdaq) do.
+    """
+    prev = None
+    for b in bars:
+        d = b.get("d") or ""
+        if d <= start_d:
+            prev = b
+            continue
+        if d > end_d:
+            break
+        c = b.get("c")
+        pc = (prev or {}).get("c") if prev else None
+        if c and pc and pc > 0:
+            ratio = c / pc
+            if ratio >= 3.0 or ratio <= 1.0 / 3.0:
+                return d
+        prev = b
+    return None
+
+
 def next_open_after(bars, fd):
     """First bar strictly after the filing date that has a usable open."""
     lo, hi = 0, len(bars)
@@ -1476,6 +1504,8 @@ def simulate(sig, bars, asof, splits=None):
                 "shares_after_split": None, "roi_corrected": None,
                 "performance_factors": [],
                 "r1": None, "r5": None, "r21": None, "r63": None, "r252": None,
+                "exit_d": None, "exit_px": None, "exit_pnl": None,
+                "exit_roi": None, "exit_status": "open",
                 "delay_fd_entry": None, "hold": None,
                 "entry_rule": "first_regular_session_open_strictly_after_sec_filing_date",
                 "entry_rule_status": "no_price",
@@ -1562,7 +1592,21 @@ def simulate(sig, bars, asof, splits=None):
             out[key + "_d"] = usable[j]["d"]
             out[key + "_px"] = r4(float(usable[j]["c"]))
 
-    # ---- split events crossing the holding period ----
+    # Canonical verified round-trip exit: the +252-session close (about one
+    # trading year after entry). Only populated once that real session exists;
+    # younger positions keep exit_status="open" with no exit price invented.
+    # Shares used for the exit respect a verified split adjustment below.
+    exit_shares = sh
+    if out.get("r252_d") and out.get("r252_px"):
+        exit_value = exit_shares * float(out["r252_px"])
+        out["exit_d"] = out["r252_d"]
+        out["exit_px"] = out["r252_px"]
+        out["exit_pnl"] = r2(exit_value - STAKE)
+        out["exit_roi"] = out["r252"]
+        out["exit_status"] = "exited_252"
+
+    # ---- split events crossing the holding period (verified Yahoo events) ----
+    out["roi_review"] = False
     if splits:
         sa = _split_analysis(usable, i, len(usable) - 1, splits, sig.get("icik"))
         if sa:
@@ -1579,6 +1623,7 @@ def simulate(sig, bars, asof, splits=None):
                     if kind == "mixed":
                         ratio_product *= e["ratio"]
                 adj_sh = sh / ratio_product
+                exit_shares = adj_sh
                 if lpx and lpx > 0:
                     mtm = adj_sh * float(lpx)
                     out["shares_after_split"] = r4(adj_sh)
@@ -1586,7 +1631,8 @@ def simulate(sig, bars, asof, splits=None):
                     out["mtm"] = r2(mtm)
                     out["pnl"] = r2(mtm - STAKE)
                     out["roi"] = r4(mtm / STAKE - 1.0)
-                # Horizon exits that cross the split mix share classes.
+                # Horizon exits (incl. the +252 exit) that cross the split mix
+                # share classes: blank them so a round trip never straddles bases.
                 for key in ("r1", "r5", "r21", "r63", "r252"):
                     d = out.get(key + "_d")
                     if d and any(kind == "mixed" and d >= e["d"]
@@ -1594,6 +1640,9 @@ def simulate(sig, bars, asof, splits=None):
                         out[key] = None
                         out[key + "_d"] = None
                         out[key + "_px"] = None
+                if out.get("exit_status") == "exited_252" and out["r252"] is None:
+                    out.update({"exit_d": None, "exit_px": None, "exit_pnl": None,
+                                "exit_roi": None, "exit_status": "open"})
                 out["entry_check"] += (" Split event(s) after entry: entry and mark span "
                                        "different share classes; P&L/ROI recomputed on "
                                        "split-adjusted shares. Review the issuer's Item "
@@ -1603,10 +1652,46 @@ def simulate(sig, bars, asof, splits=None):
                                        "split-adjusted on both sides, so absolute prices "
                                        "are adjusted; P&L/ROI reflect the adjusted-series "
                                        "return. Review the issuer's Item 3.03 8-K.")
-            else:  # split_event_review
+            else:  # split_event_review — indeterminate: flag and keep the raw
+                   # series ROI as a working value (excluded from headline stats
+                   # via split_flag), pending manual review of the issuer's 8-K.
+                out["roi_review"] = True
+                out["roi_review_reason"] = ("Split event(s) after entry with an indeterminate "
+                                            "price discontinuity; flagged for manual review of "
+                                            "the issuer's Item 3.03 8-K. Raw series ROI retained "
+                                            "as a working value but excluded from headline stats.")
                 out["entry_check"] += (" Split event(s) after entry with an indeterminate "
                                        "price discontinuity: ROI excluded from headline "
                                        "statistics pending manual review of the issuer's 8-K.")
+
+    # Fallback guard only when NO split-event metadata was processed (a raw /
+    # unadjusted series such as Nasdaq has no events): a >=3x in-window jump or an
+    # implausible short-horizon return implies a straddle across share bases.
+    # Withhold the headline ROI and retain the raw value for audit. When Yahoo
+    # split events were present, _split_analysis above already handled it.
+    if not out["roi_review"] and not out.get("split_flag"):
+        split_d = None
+        if out.get("entry_d") and out.get("last_d"):
+            split_d = find_split_in_window(usable, out["entry_d"], out["last_d"])
+        hold_n = out.get("hold")
+        roi_v = out.get("roi")
+        trigger = split_d or (
+            roi_v is not None and
+            (((roi_v > 2.0 or roi_v < -0.80) and (hold_n is not None and hold_n <= 90))
+             or roi_v > 5.0))
+        if trigger:
+            out["roi_review"] = True
+            out["roi_review_reason"] = (
+                (f"Price series shows a >=3x one-session discontinuity on/near {split_d} "
+                 if split_d else
+                 f"Mark-to-market return {roi_v} over {hold_n} sessions is implausible; ") +
+                "(unadjusted reverse/forward split or cash takeover). Entry and mark may be on "
+                "different share bases; headline ROI withheld pending line-by-line confirmation. "
+                "Prices/dates retained as observed; raw value kept in roi_reported.")
+            out["roi_reported"] = roi_v
+            out["pnl_reported"] = out.get("pnl")
+            out["roi"] = out["pnl"] = out["mtm"] = None
+
 
     # These are observed diagnostics, not causal claims. They let the analysis
     # page explain which measurable conditions coincided with a positive or
@@ -1689,20 +1774,25 @@ def role_bucket(rel, title):
 
 
 def analyze(positions):
-    opens = [p for p in positions if p["status"] == "open" and p.get("roi") is not None]
-    # Split-flagged positions are excluded from every headline statistic:
-    # their raw series ROI can mix pre-split entries with post-split marks
-    # (a +517% artifact is not a tradable result). They are counted and
-    # reported separately instead of silently folding into the aggregates.
+    # Open = every verified-entry position. A position whose headline ROI is
+    # withheld (split_flag with an indeterminate status, or roi_review from the
+    # fallback straddle guard) is still OPEN and deploys capital, but its ROI is
+    # excluded from performance statistics rather than fabricated or silently
+    # folded into the aggregates. clean_opens drive every headline number.
+    opens_all = [p for p in positions if p["status"] == "open"]
+    opens = [p for p in opens_all if p.get("roi") is not None]
     clean_opens = [p for p in opens if not p.get("split_flag")]
     split_opens = [p for p in opens if p.get("split_flag")]
+    roi_review = [p for p in opens_all if p.get("roi_review")]
     by_role, by_size, by_year = defaultdict(list), defaultdict(list), defaultdict(list)
     for p in clean_opens:
         by_role[role_bucket(p.get("rel"), p.get("title"))].append(p["roi"])
         by_size[size_bucket(p.get("insider_val") or 0)].append(p["roi"])
         by_year[(p.get("fd") or "")[:4]].append(p["roi"])
 
-    deployed = sum(p["stake"] for p in clean_opens)
+    # Deployed capital counts every open position; value/ROI stats only sum the
+    # clean (trustworthy-mark) subset so a split artifact never inflates P&L.
+    deployed = sum(p["stake"] for p in opens_all)
     value = sum(p["mtm"] for p in clean_opens if p.get("mtm") is not None)
     price_sources = defaultdict(int)
     entry_rule_failures = 0
@@ -1739,9 +1829,11 @@ def analyze(positions):
         "stake": STAKE,
         "counts": {
             "signals": len(positions),
-            "open": len(opens),
+            "open": len(opens_all),
+            "open_with_roi": len(opens),
             "open_clean": len(clean_opens),
             "open_split_flagged": len(split_opens),
+            "roi_review": len(roi_review),
             "awaiting_entry": sum(1 for p in positions if p["status"] == "awaiting_entry"),
             "no_price": sum(1 for p in positions if p["status"] == "no_price"),
             "entry_window_missing": sum(1 for p in positions
@@ -1951,8 +2043,12 @@ def write_paper(positions, out_dir, coverage: dict | None = None):
             "insider_val", "entry_px", "gap", "shares", "stake", "last_d", "last_px",
             "mtm", "pnl", "roi", "roi_corrected", "roi_status", "split_flag",
             "split_events", "shares_after_split",
+            "roi_reported", "pnl_reported", "roi_review", "roi_review_reason",
             "r1", "r1_d", "r1_px", "r5", "r5_d", "r5_px", "r21", "r21_d", "r21_px",
             "r63", "r63_d", "r63_px", "r252", "r252_d", "r252_px",
+            # Verified round-trip exit (252-session close): real price on a real
+            # date, blank until that session has actually printed.
+            "exit_d", "exit_px", "exit_pnl", "exit_roi", "exit_status",
             "delay_td_fd",
             "delay_fd_entry", "hold", "price_src", "entry_check", "performance_factors", "edgar_url",
             "yahoo_history_url", "stooq_url", "acc",
@@ -2093,10 +2189,13 @@ def main() -> int:
         price_deadline = time.monotonic() + args.price_budget_min * 60.0
         PRICE_DEADLINE = price_deadline
 
-    if not args.offline:
-        n_restored = init_price_cache_from_bundle()
-        if n_restored:
-            log(f"  price cache restored from bundle: {n_restored:,} tickers")
+    # Restore the committed verified price bundle in BOTH modes. Online runs
+    # then refresh stale tails; offline runs reproduce the paper book purely
+    # from the committed real bars (no network, no fabrication).
+    n_restored = init_price_cache_from_bundle()
+    if n_restored:
+        log(f"  price cache restored from bundle: {n_restored:,} ticker(s)"
+            + ("" if not args.offline else " (offline: using committed verified bars only)"))
     for i, tk in enumerate(tickers, 1):
         if price_deadline is not None and time.monotonic() > price_deadline:
             bars, src, splits = [], "price_budget_exhausted", None

@@ -1,6 +1,6 @@
 # CEOTrades Data Integrity & Verification Report
 
-**Generated:** 2026-08-30T01:31:43Z
+**Generated:** 2026-08-30T19:10:01Z
 **Target year:** 2026
 **Status:** **INCOMPLETE / UNPROVEN**
 
@@ -27,7 +27,7 @@ This report is generated from the local canonical store. It is intentionally con
 
 - **Blocker:** First observed 2026 filing is 2026-03-06, after the expected year-to-date start window around 2026-01-01.
 - **Blocker:** No target-year rows were observed in month(s): 2026-01, 2026-02.
-- **Blocker:** No collector/data/source_manifest.json from collect_ytd.py is present, so official source coverage is not proven.
+- **Blocker:** Source manifest has unavailable quarterly archive(s): 2026q1, 2026q2.
 
 ## Row-level integrity checks
 

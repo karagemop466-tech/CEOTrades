@@ -211,6 +211,7 @@ def main() -> int:
             log("Removed existing target-year shard(s): " + (", ".join(removed) if removed else "none"))
 
         missing_bulk_qs = []
+        transient_qs = []
         qstate = load_quarter_state(args.data_dir)
         for q in q_to_try:
             label = f"{args.year}q{q}"
@@ -229,9 +230,17 @@ def main() -> int:
             log(f"== SEC quarterly archive {label}")
             raw = bb.fetch_quarter(args.year, q)
             if not raw:
-                log("   unavailable/not yet published")
-                manifest["quarters"].append({"label": label, "status": "unavailable"})
+                # fetch_quarter returns None for a transient SEC block (retry
+                # next run) as well as for a not-yet-published archive. Either
+                # way the daily EDGAR index path covers the same days, so the
+                # window is still collected; the status tells the audit which.
+                published = (today - quarter_end(args.year, q)).days >= 60
+                status = "blocked_retry" if published else "not_published"
+                log(f"   bulk archive not fetched ({status}); daily EDGAR path will cover it")
+                manifest["quarters"].append({"label": label, "status": status})
                 missing_bulk_qs.append(q)
+                if published:
+                    transient_qs.append(q)
                 continue
             digest = hashlib.sha256(raw).hexdigest()
             log(f"   downloaded {len(raw) / 1e6:.1f} MB sha256={digest[:16]}…")

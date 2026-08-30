@@ -379,6 +379,12 @@ def simulate_one(signal: dict, bars: list[dict], asof: str, stake: float = STAKE
         "r5": None, "r5_d": None,
         "r21": None, "r21_d": None,
         "r63": None, "r63_d": None,
+        "r252": None, "r252_d": None,
+        # Verified one-year round-trip exit (close at the +252 session bar).
+        # Populated only once that session has actually printed a close, so a
+        # backtest exit is always a real observed price on a real date.
+        "exit_d": None, "exit_px": None, "exit_pnl": None, "exit_roi": None,
+        "exit_src": None,
         "hold_sessions": None,
     })
     td, fd = signal.get("td") or "", signal.get("fd") or ""
@@ -457,6 +463,20 @@ def simulate_one(signal: dict, bars: list[dict], asof: str, stake: float = STAKE
     _set("r5", 5)
     _set("r21", 21)
     _set("r63", 63)
+    _set("r252", 252)
+
+    # Verified round-trip EXIT: once the +252 session (about one trading year)
+    # has printed a real close, the position is treated as exited at that close.
+    # exit_px/exit_d are observed market data, never a forecast; a position
+    # younger than 252 sessions stays open with exit_* blank.
+    exit_px, exit_d = horizon_close(usable, idx, 252)
+    if exit_px is not None and exit_px > 0:
+        exit_value = shares * exit_px
+        out["exit_d"] = exit_d
+        out["exit_px"] = round4(exit_px)
+        out["exit_pnl"] = round2(exit_value - stake)
+        out["exit_roi"] = round4((exit_value / stake) - 1.0)
+        out["exit_src"] = out.get("entry_src") or signal.get("price_src")
     return out
 
 

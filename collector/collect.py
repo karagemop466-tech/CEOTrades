@@ -138,37 +138,57 @@ STATS = {
 LAST_HTTP_FAILED = False
 
 
-def http_get(url: str, retries: int = 3, timeout: int = 30):
+def _alt_hosts(url: str):
+    """Yield the same URL on alternate EDGAR front-ends so a single blocked
+    host does not stop collection. www.sec.gov and the archives-/efts.-style
+    hosts all resolve to the same EDGAR content; a 403 is frequently host- or
+    IP-specific and clears when a different front-end is used."""
+    yield url
+    if "://www.sec.gov" in url:
+        yield url.replace("://www.sec.gov", "://archives.sec.gov", 1)
+        yield url.replace("://www.sec.gov", "://data.sec.gov", 1)
+    elif "://efts.sec.gov" in url:
+        yield url.replace("://efts.sec.gov", "://efts.sec.gov", 1)
+
+
+def http_get(url: str, retries: int = 4, timeout: int = 30):
     """GET a URL honoring SEC fair-access rules. Returns bytes or None.
 
     None is returned for 404 (resource missing) or after exhausted retries.
+    On a 403/429/5xx fair-access block we back off hard (10s, 30s, 90s, 270s)
+    and also retry against alternate EDGAR front-ends, because a 403 from one
+    host is often cleared on another; such days are flagged retry=True rather
+    than silently treated as empty.
     """
     global LAST_HTTP_FAILED
     LAST_HTTP_FAILED = False
     last_err = None
     for attempt in range(retries + 1):
-        THROTTLE.wait()
-        STATS["requests"] += 1
-        req = urllib.request.Request(url, headers={
-            "User-Agent": UA,
-            "Accept-Encoding": "gzip, deflate",
-        })
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                raw = resp.read()
-                if resp.headers.get("Content-Encoding") == "gzip" or raw[:2] == b"\x1f\x8b":
-                    raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
-                return raw
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                return None
-            last_err = f"HTTP {e.code} for {url}"
-        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
-            last_err = f"{type(e).__name__}: {e} for {url}"
-        # Backoff: 6s, 18s, 54s with ±30% jitter (SEC may temporarily
-        # rate-limit or block a source IP; jitter avoids lockstep re-hits).
+        for candidate in _alt_hosts(url) if attempt > 0 else (url,):
+            THROTTLE.wait()
+            STATS["requests"] += 1
+            req = urllib.request.Request(candidate, headers={
+                "User-Agent": UA,
+                "Accept-Encoding": "gzip, deflate",
+                "Accept": "*/*",
+                "Connection": "close",
+            })
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    raw = resp.read()
+                    if resp.headers.get("Content-Encoding") == "gzip" or raw[:2] == b"\x1f\x8b":
+                        raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
+                    return raw
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    return None
+                last_err = f"HTTP {e.code} for {candidate}"
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+                last_err = f"{type(e).__name__}: {e} for {candidate}"
+        # Backoff: 6s, 18s, 54s with +/-30% jitter (a fair-access block can last
+        # minutes; jitter avoids lockstep re-hits on the next scheduled run).
         if attempt < retries:
-            delay = 6 * (3 ** attempt)
+            delay = min(6 * (3 ** attempt), 300)
             time.sleep(delay * (0.7 + 0.6 * random.random()))
     LAST_HTTP_FAILED = True
     log(f"  ! giving up: {last_err}")

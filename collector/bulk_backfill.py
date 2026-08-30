@@ -155,30 +155,48 @@ class Throttle:
 THROTTLE = Throttle(5.0)
 
 
-def http_get(url: str, retries: int = 4, timeout: int = 300) -> bytes | None:
-    """GET honoring SEC fair-access. Returns bytes, or None on 403/404/exhaustion."""
+class NotFound(Exception):
+    """A 404 (or SEC 410): the resource genuinely does not exist at this URL."""
+
+
+def http_get(url: str, retries: int = 5, timeout: int = 300) -> bytes | None:
+    """GET honoring SEC fair-access.
+
+    Returns raw bytes on success.
+    Raises NotFound on a definitive 404/410 (resource not published).
+    Returns None after exhausting retries on a *transient* failure (403/429/5xx
+    or a transport error) — the caller must treat that as "retry later", never
+    as "the archive does not exist". A 403 from www.sec.gov is an IP-level
+    fair-access block, not a missing file, so it must never be tombstoned.
+    """
+    last = "unknown error"
     for attempt in range(retries + 1):
         THROTTLE.wait()
         req = urllib.request.Request(url, headers={
             "User-Agent": UA,
             "Accept-Encoding": "gzip, deflate",
+            "Accept": "*/*",
+            "Connection": "close",
             "Host": "www.sec.gov",
         })
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 raw = r.read()
-                if r.headers.get("Content-Encoding") == "gzip":
+                if r.headers.get("Content-Encoding") == "gzip" or raw[:2] == b"\x1f\x8b":
                     raw = gzip.decompress(raw)
                 return raw
         except urllib.error.HTTPError as e:
-            if e.code in (403, 404):
-                return None
+            if e.code in (404, 410):
+                raise NotFound(url)
+            # 403 = SEC fair-access block on this IP right now; 429 = too many
+            # requests; 5xx = upstream. All are transient: back off hard.
             last = f"HTTP {e.code}"
         except Exception as e:  # noqa: BLE001 - network variability
-            last = str(e)
+            last = f"{type(e).__name__}: {e}"
         if attempt < retries:
-            time.sleep(2 ** attempt)
-    log(f"   ! giving up on {url} ({last})")
+            # 10s, 30s, 90s, 270s... long enough for a fair-access block to lift.
+            time.sleep(min(10 * (3 ** attempt), 300))
+    log(f"   ! giving up on {url} ({last}) — transient failure, will retry later")
     return None
 
 
@@ -497,11 +515,27 @@ def quarters(start_year: int, end: date):
 
 
 def fetch_quarter(y: int, q: int) -> bytes | None:
+    """Download one quarterly archive, trying both SEC hosting paths.
+
+    Returns the ZIP bytes on success, or None on a *transient* failure
+    (fair-access block / transport error after retries). None means "retry on
+    a later run" — it is never proof the archive is absent, because the SEC
+    data-sets page lists every published quarter and both paths are probed.
+    """
     name = f"{y}q{q}_form345.zip"
+    not_found_on_all = True
     for host in ZIP_HOSTS:
-        raw = http_get(f"{host}/{name}")
+        url = f"{host}/{name}"
+        try:
+            raw = http_get(url)
+        except NotFound:
+            continue  # this path does not host the file; try the other path
         if raw and raw[:2] == b"PK":
             return raw
+        if raw is None:
+            not_found_on_all = False  # transient block, not a missing file
+    if not_found_on_all:
+        log(f"   {name}: 404 on both SEC hosting paths — not published yet")
     return None
 
 
