@@ -117,10 +117,17 @@ def _quarter_end_of(label: str) -> date:
     return date(y, 3 * q, 1) - timedelta(days=1) if q < 4 else date(y, 12, 31)
 
 
+def _quarter_published(label: str, today: date) -> bool:
+    """SEC publishes each quarterly data set roughly 6-8 weeks after the
+    quarter ends. Before that window a missing archive is expected, not a
+    failure; after it, an archive that still fails to download is retried on
+    every run instead of being tombstoned."""
+    return (today - _quarter_end_of(label)).days >= 60
+
+
 def backfill(budget_min: float, from_year: int = 0) -> None:
     st = load_state()
     done = set(st.get("done", []))
-    unavailable = set(st.get("unavailable", []))
     quarters = all_quarters(from_year)
     today = date.today()
 
@@ -133,7 +140,12 @@ def backfill(budget_min: float, from_year: int = 0) -> None:
     if len(refresh) < 2:
         skipped = [q for q in quarters[:2] if q not in refresh]
         log(f"Refresh skip (ingested, quarter ended >45d ago): {', '.join(skipped)}")
-    todo = [q for q in quarters if q not in done and q not in unavailable]
+    # Legacy state recorded 'unavailable' quarters. That marker is a transient
+    # network diagnosis, never a fact about the archive: published quarters
+    # are retried on every run until they ingest successfully. Quarters that
+    # cannot possibly be published yet are skipped quietly.
+    todo = [q for q in quarters
+            if q not in done and _quarter_published(q, today)]
 
     log(f"Backfill: {len(done)} quarters ingested, {len(todo)} remaining, "
         f"budget {budget_min:.0f} min")
@@ -148,7 +160,8 @@ def backfill(budget_min: float, from_year: int = 0) -> None:
             continue
         if ok:
             done.add(label)
-            unavailable.discard(label)
+            st["done"] = sorted(done)
+            save_state(st)
         else:
             log("   not published yet")
 
@@ -156,28 +169,31 @@ def backfill(budget_min: float, from_year: int = 0) -> None:
         if label in refresh:
             continue
         if time.monotonic() > deadline:
-            log(f"Backfill budget reached — {len([q for q in todo if q not in done])} "
-                f"quarters left for the next run.")
+            log(f"Backfill budget reached — {len(todo)} quarters left for the "
+                f"next run.")
             break
         log(f"== {label}")
         try:
             ok, _ = ingest(label)
         except Exception as e:  # noqa: BLE001
-            log(f"   ! failed: {e}")
-            continue
+            log(f"   ! failed: {e} — will retry next run")
+            break
         if ok:
             done.add(label)
         else:
-            log("   archive unavailable")
-            unavailable.add(label)
+            # A published quarter that cannot be downloaded is a network
+            # failure. Stop this run (do not burn the budget repeating it)
+            # and retry on the next one; the quarter is NOT marked unavailable.
+            log("   archive unreachable — will retry next run")
+            break
         st["done"] = sorted(done)
-        st["unavailable"] = sorted(unavailable)
         save_state(st)
 
     st["done"] = sorted(done)
-    st["unavailable"] = sorted(unavailable)
+    if "unavailable" in st:
+        del st["unavailable"]  # legacy transient marker: never re-persisted
     save_state(st)
-    remaining = [q for q in all_quarters(from_year) if q not in done and q not in unavailable]
+    remaining = [q for q in all_quarters(from_year) if q not in done]
     log(f"Backfill state: {len(done)} done, {len(remaining)} remaining"
         + (f" (next: {remaining[0]})" if remaining else " — history complete"))
 
@@ -290,22 +306,62 @@ def _total_budget_min() -> float:
 
 
 def _backfill_from(target: int) -> int:
-    """First filing year to backfill and publish (target-1 by default so the
-    paper book covers at least a rolling two-year window; 0 disables)."""
-    raw = os.environ.get("CEOTRADES_BACKFILL_FROM", str(target - 1)).strip()
-    if raw in ("", "0", "off", "none"):
+    """First filing year to backfill and publish. Defaults to 2006 (the first
+    year of the SEC Insider Transactions Data Sets) so the nightly run keeps
+    deepening the store until the full history is ingested; the resumable
+    backfill state makes this incremental. CEOTRADES_BACKFILL_FROM narrows
+    it; 0 disables legacy backfill."""
+    raw = os.environ.get("CEOTRADES_BACKFILL_FROM", "2006").strip()
+    if raw in ("0", "off", "none"):
         return 0
     try:
         v = int(raw)
     except ValueError:
-        return max(0, target - 1)
+        return 2006
     return max(0, min(v, target))
+
+
+def _publish_from(target: int) -> int:
+    """First filing year published on the site (CEOTRADES_PUBLISH_FROM).
+    Defaults to the backfill window. Independent of the paper window: the
+    site tape, per-year downloads and aggregations can cover the full local
+    store even when the $10k paper simulation starts later."""
+    raw = os.environ.get("CEOTRADES_PUBLISH_FROM", "").strip()
+    if not raw:
+        return _backfill_from(target)
+    try:
+        v = int(raw)
+    except ValueError:
+        return _backfill_from(target)
+    return max(0, v)
+
+
+def _paper_from() -> int:
+    """First filing year that can create a $10k paper position
+    (CEOTRADES_PAPER_FROM, default 2024): a paper entry needs verified market
+    bars, and bars are only retained from CEOTRADES_PRICES_FROM onward."""
+    raw = os.environ.get("CEOTRADES_PAPER_FROM", "2024").strip()
+    try:
+        v = int(raw)
+    except ValueError:
+        return 2024
+    return max(0, v)
 
 
 def main() -> int:
     t_start = time.monotonic()
     budget = _total_budget_min()
     target = _target_year()
+
+    # Upstream diagnostics first (11 polite requests): the result lands in
+    # collector/data/logs/diag_net.log and travels with the run, so upstream
+    # blocking (e.g. SEC HTTP 403) is diagnosable from the repo itself.
+    if os.environ.get("CEOTRADES_SKIP_DIAG") != "1":
+        try:
+            import diag_net
+            diag_net.main()
+        except Exception as e:  # noqa: BLE001
+            log(f"! network diagnostics failed ({e}) — continuing")
 
     if target:
         # Target-year mode: incremental nightly collection of the current year
@@ -316,8 +372,13 @@ def main() -> int:
         # so the current quarter is collected once and then extended, not
         # re-scanned from its first day on every run.
         from_year = _backfill_from(target)
+        publish_from = _publish_from(target)
+        paper_from = _paper_from()
         log(f"Target-year SEC collection: {target} "
-            f"(publish window {from_year or target}..{target}, budget {budget:.0f} min)")
+            f"(backfill from {from_year or target}, publish from "
+            f"{publish_from or target}, paper from "
+            f"{paper_from if paper_from >= (publish_from or target) else (publish_from or target)}, "
+            f"budget {budget:.0f} min)")
 
         collect_budget = min(35.0, budget * 0.4)
         cmd = [sys.executable, os.path.join(HERE, "collect_ytd.py"),
@@ -356,10 +417,13 @@ def main() -> int:
     log("\nBuilding site data …")
     sys.argv = ["build_data"]
     if target:
-        if from_year and from_year < target:
-            # Publish the backfilled window AND the target year so paper
-            # positions cover every tracked insider buy, not just this year's.
-            sys.argv += ["--from-year", str(from_year), "--audit-year", str(target)]
+        if publish_from and publish_from < target:
+            # Publish the full site window (tape, downloads, aggregations) and
+            # bound only the $10k paper simulation to its own window.
+            eff_paper = max(paper_from, publish_from)
+            sys.argv += ["--from-year", str(publish_from),
+                         "--paper-from-year", str(eff_paper),
+                         "--audit-year", str(target)]
         else:
             sys.argv += ["--year", str(target), "--audit-year", str(target)]
         if os.environ.get("CEOTRADES_OFFLINE") == "1":

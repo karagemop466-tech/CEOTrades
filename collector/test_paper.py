@@ -212,11 +212,13 @@ def main() -> int:
         check("tail merge keeps old open on updated bar", merged[-2]["o"], 13.2)
         check("tail merge appends new session", merged[-1]["d"], "2025-06-04")
 
-        # Trimming bounds the bundle to the publish window.
+        # Trimming bounds the bundle to the publish window (PRICES_FROM default
+        # is 2024-01-01 — the paper window's first fill can be early Jan 2024).
         old_hist = bars([("2020-01-02", 5.0, 5.5), ("2024-01-02", 6.0, 6.5),
                          ("2025-03-03", 7.0, 7.5)])
         check("trim drops pre-window bars",
-              [b["d"] for b in bd._trim_bars(old_hist)], ["2025-03-03"])
+              [b["d"] for b in bd._trim_bars(old_hist)],
+              ["2024-01-02", "2025-03-03"])
         check("trim keeps everything when already in window",
               [b["d"] for b in bd._trim_bars(hist)], [b["d"] for b in hist])
     finally:

@@ -59,6 +59,8 @@ INSIDER_CAP = 4000       # insiders published in the browsable table
 INSIDER_ACTIVITY_CAP = 12000  # insider/company pairs published as JSON
 INSIDER_PORTFOLIO_CAP = 8000  # per-insider cross-issuer portfolio rows published as JSON
 PAPER_BROWSE_CAP = 8000  # positions published as JSON (full set is in the CSV)
+WINNER_LOG_CAP = 5000   # outcome rows embedded in winners.json (counts stay complete)
+LOSER_LOG_CAP = 5000    # outcome rows embedded in losers.json (counts stay complete)
 
 
 def log(m):
@@ -110,13 +112,20 @@ def _new_ins():
             "first": "", "last": ""}
 
 
-def collect(data_dir: str, target_year: int | None = None, from_year: int = 0):
+def collect(data_dir: str, target_year: int | None = None, from_year: int = 0,
+            paper_from: int = 0):
     """Aggregate rows from the store.
 
     When target_year is supplied, only rows whose SEC filing date falls in that
     calendar year are published. When from_year is supplied (>0), rows are
     published from that year onward instead. Filters prevent a build from
     accidentally showing data outside the intended window.
+
+    paper_from (optional) is the first filing year that can create a paper
+    position. The site tape, aggregations and holdings all use the full site
+    window; only the $10k paper simulation is bounded by paper_from, because a
+    paper entry needs verified market bars and those are only guaranteed to be
+    retained from CEOTRADES_PRICES_FROM onward.
     """
     companies: dict[str, dict] = {}
     insiders: dict[str, dict] = {}
@@ -149,6 +158,11 @@ def collect(data_dir: str, target_year: int | None = None, from_year: int = 0):
         if from_year:
             return len(fd) >= 4 and fd[:4].isdigit() and int(fd[:4]) >= from_year
         return True
+
+    def in_paper_window(fd: str) -> bool:
+        if not paper_from:
+            return True
+        return len(fd) >= 4 and fd[:4].isdigit() and int(fd[:4]) >= paper_from
 
     for row_idx, r in enumerate(store.iter_rows(data_dir), 1):
         fd = r.get("fd") or ""
@@ -387,7 +401,7 @@ def collect(data_dir: str, target_year: int | None = None, from_year: int = 0):
                 sig_audit["no_price_reported"] += 1
             elif not is_common_equity(r.get("sec") or ""):
                 sig_audit["not_common_equity"] += 1
-        if is_buy and not r.get("der") and tk:
+        if is_buy and not r.get("der") and tk and in_paper_window(fd):
             sh, px = r.get("sh"), r.get("px")
             if sh and px and sh > 0 and px > 0 and is_common_equity(r.get("sec") or ""):
                 key = (acc, tk)
@@ -425,6 +439,7 @@ def collect(data_dir: str, target_year: int | None = None, from_year: int = 0):
         "filings": len(accs), "recent": recent, "signals": signals,
         "activity": activity, "activity_tickers": activity_tickers,
         "signal_audit": sig_audit,
+        "paper_from": paper_from,
         "first_fd": "" if first_fd == "9999-99-99" else first_fd,
         "last_fd": last_fd,
     }
@@ -880,11 +895,11 @@ UA_MKT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko
 
 PRICE_CACHE = os.path.join(HERE, "data", "prices")
 PRICE_BUNDLE = os.path.join(HERE, "data", "prices-bundle.jsonl.gz")
-# Bars older than this are dropped when caching: published entries start at
-# CEOTRADES_PRICES_FROM (default 2024-06-01, comfortably before the 2025+
-# publish window), so this bounds the persistent bundle to the bars that can
-# ever be used for fills or marks.
-PRICES_FROM = os.environ.get("CEOTRADES_PRICES_FROM", "2024-06-01")
+# Bars older than this are dropped when caching: published paper entries start
+# at CEOTRADES_PAPER_FROM (default 2024-01-01), so this bounds the persistent
+# bundle to the bars that can ever be used for fills or marks.
+PRICES_FROM = os.environ.get("CEOTRADES_PRICES_FROM", "2024-01-01")
+PAPER_FROM_DEFAULT = int(os.environ.get("CEOTRADES_PAPER_FROM", "2024") or 2024)
 STAKE = 10_000.0
 MIN_INSIDER_VALUE = 1_000.0   # ignore token purchases
 # A regular U.S. session always follows a filing within a few days (weekends,
@@ -1705,12 +1720,16 @@ def write_paper(positions, out_dir, coverage: dict | None = None):
     losers = [p for p in realized if p.get("pnl", 0) <= 0]
     def outcome_log(label, rows):
         ordered_rows = sorted(rows, key=lambda p: (p.get("pnl") or 0), reverse=(label == "winners"))
+        cap = WINNER_LOG_CAP if label == "winners" else LOSER_LOG_CAP
         return {
             "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
             "classification": "winner if verified mark-to-market P&L > 0; loser if verified P&L <= 0",
             "outcome": label,
             "count": len(ordered_rows),
-            "rows": ordered_rows,
+            "rows": ordered_rows[:cap],
+            "truncated": len(ordered_rows) > cap,
+            "truncation_note": (f"top {cap} rows by P&L embedded; the complete "
+                                "outcome set is in data/paper/positions.csv.gz"),
             "unclassified_count": len(positions) - len(realized),
             "unclassified_rule": "awaiting_entry/no_price positions remain unclassified until a verified entry and close exist",
         }
@@ -1765,6 +1784,9 @@ def main() -> int:
                     help="publish only this SEC filing year (0 = all local rows)")
     ap.add_argument("--from-year", type=int, default=0,
                     help="publish rows filed in this year or later (0 = no lower bound)")
+    ap.add_argument("--paper-from-year", type=int, default=PAPER_FROM_DEFAULT,
+                    help="first filing year that can create a $10k paper position "
+                         "(default: CEOTRADES_PAPER_FROM or 2024)")
     ap.add_argument("--offline", action="store_true",
                     help="use only cached prices (no network)")
     ap.add_argument("--max-tickers", type=int, default=0,
@@ -1777,6 +1799,7 @@ def main() -> int:
     args = ap.parse_args()
     target_year = args.year or None
     from_year = args.from_year or 0
+    paper_from = args.paper_from_year or 0
     audit_year = args.audit_year or target_year or audit_mod.asof_today().year
 
     if not store.shard_files(args.data):
@@ -1788,7 +1811,11 @@ def main() -> int:
         log(f"  filtering to SEC filing year {target_year}")
     elif from_year:
         log(f"  filtering to SEC filing years >= {from_year}")
-    agg = collect(args.data, target_year=target_year, from_year=from_year)
+    if paper_from:
+        log(f"  paper-trade window: filing years >= {paper_from} "
+            f"(site tape/holdings use the full window)")
+    agg = collect(args.data, target_year=target_year, from_year=from_year,
+                  paper_from=paper_from)
     t = agg["totals"]
     log(f"  {t['n']:,} rows | {agg['filings']:,} filings | "
         f"{len(agg['companies']):,} companies | {len(agg['insiders']):,} insiders")
@@ -1816,6 +1843,7 @@ def main() -> int:
     coverage = {
         "p_transaction_rows": sa.get("p_rows", 0),
         "signals_before_filters": len(agg["signals"]),
+        "paper_window_from_year": paper_from,
         "skipped_derivative_rows": sa.get("derivative", 0),
         "skipped_no_ticker_rows": sa.get("no_ticker", 0),
         "skipped_no_share_count_rows": sa.get("no_share_count", 0),
@@ -1824,11 +1852,14 @@ def main() -> int:
         "skipped_below_min_value_signals": dropped_min_value,
         "skipped_invalid_ticker_signals": dropped_bad_ticker,
         "min_insider_value_usd": MIN_INSIDER_VALUE,
-        "note": ("Every P-code buy is accounted for: rows that cannot define a "
-                 "position (derivative, no ticker, no share count, no reported "
-                 "price, non-common security) or are below the documented "
-                 f"${MIN_INSIDER_VALUE:,.0f} minimum are counted here, never "
-                 "silently dropped."),
+        "note": ("Every P-code buy in the site window is accounted for: rows that "
+                 "cannot define a position (derivative, no ticker, no share "
+                 "count, no reported price, non-common security) or are below "
+                 f"the documented ${MIN_INSIDER_VALUE:,.0f} minimum are counted "
+                 "here, never silently dropped. P buys filed before the paper "
+                 f"window ({paper_from if paper_from else 'none'}) are not "
+                 "simulated because verified market bars are only retained "
+                 "from CEOTRADES_PRICES_FROM onward."),
     }
     log(f"  {len(sigs):,} qualifying buy signals "
         f"({dropped_min_value:,} below ${MIN_INSIDER_VALUE:,.0f}, "
