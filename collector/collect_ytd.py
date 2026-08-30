@@ -117,6 +117,45 @@ def run_daily_collect(start: date, end: date, data_dir: str, rate: float,
     return {"status": "ok" if rc == 0 else "failed", "returncode": rc, "command": " ".join(cmd)}
 
 
+def quarter_state_path(data_dir: str) -> str:
+    return os.path.join(data_dir, "quarters.json")
+
+
+def load_quarter_state(data_dir: str) -> dict:
+    p = quarter_state_path(data_dir)
+    if os.path.exists(p):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            pass
+    return {}
+
+
+def save_quarter_state(data_dir: str, state: dict) -> None:
+    with open(quarter_state_path(data_dir), "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=1, sort_keys=True)
+
+
+# A completed quarter is re-downloaded only inside this window after its
+# quarter-end (amendments and late filings keep arriving for a few weeks).
+# Outside the window an already-ingested quarter is skipped: re-merging it
+# would rewrite a multi-MB store shard every night for no data change.
+QUARTER_REFRESH_DAYS = 45
+
+
+def quarter_needs_fetch(state: dict, y: int, q: int, today: date) -> bool:
+    label = f"{y}q{q}"
+    info = state.get(label) or {}
+    if not info.get("ingested"):
+        return True
+    try:
+        ended = date.fromisoformat(info["quarter_end"])
+    except (KeyError, ValueError):
+        return True
+    return (today - ended).days <= QUARTER_REFRESH_DAYS
+
+
 def main() -> int:
     runlog.start("collect_ytd")
     today = asof_today()
@@ -131,6 +170,8 @@ def main() -> int:
                     help="remove existing target-year shards before collecting, eliminating stale/manual rows")
     ap.add_argument("--force-daily", action="store_true",
                     help="re-collect days already marked complete in collect.py stats")
+    ap.add_argument("--refresh-quarters", action="store_true",
+                    help="re-download completed-quarter archives even outside the refresh window")
     ap.add_argument("--try-current-quarter", action="store_true",
                     help="also try the current quarter bulk archive, if the SEC has already published it")
     args = ap.parse_args()
@@ -170,8 +211,21 @@ def main() -> int:
             log("Removed existing target-year shard(s): " + (", ".join(removed) if removed else "none"))
 
         missing_bulk_qs = []
+        qstate = load_quarter_state(args.data_dir)
         for q in q_to_try:
             label = f"{args.year}q{q}"
+            if not args.refresh_quarters and not args.replace_year \
+                    and not quarter_needs_fetch(qstate, args.year, q, today):
+                info = qstate[label]
+                log(f"== SEC quarterly archive {label}: already ingested "
+                    f"{info.get('rows_parsed', 0):,} rows on {info.get('at', '?')[:10]} "
+                    f"(quarter ended >{QUARTER_REFRESH_DAYS}d ago) — skipping download")
+                manifest["quarters"].append({
+                    "label": label, "status": "ok", "skipped_download": True,
+                    "previously_ingested": True,
+                    "rows_parsed": info.get("rows_parsed", 0),
+                })
+                continue
             log(f"== SEC quarterly archive {label}")
             raw = bb.fetch_quarter(args.year, q)
             if not raw:
@@ -183,6 +237,16 @@ def main() -> int:
             log(f"   downloaded {len(raw) / 1e6:.1f} MB sha256={digest[:16]}…")
             rows = bb.quarter_rows(raw, f"{args.year}Q{q}")
             info = bb.merge_into_store(rows)
+            qstate[label] = {
+                "ingested": True,
+                "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "quarter_end": quarter_end(args.year, q).isoformat(),
+                "sha256": digest,
+                "bytes": len(raw),
+                "rows_parsed": len(rows),
+                "rows_added": info.get("added", 0),
+            }
+            save_quarter_state(args.data_dir, qstate)
             manifest["quarters"].append({
                 "label": label,
                 "status": "ok",

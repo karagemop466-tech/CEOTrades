@@ -67,8 +67,31 @@ def ymd(s):
 
 
 def edgar_url(acc: str, icik: str) -> str:
-    return (f"https://www.sec.gov/Archives/edgar/data/"
-            f"{str(icik or '0').zfill(10)}/{(acc or '').replace('-', '')}/{acc}.txt")
+    """Canonical SEC filing-index URL (same convention as build_data/audit)."""
+    a = "".join(ch for ch in str(acc or "") if ch.isdigit() or ch == "-")
+    if not a:
+        return ""
+    plain = a.replace("-", "")
+    cik = "".join(ch for ch in str(icik or "") if ch.isdigit()).lstrip("0") or plain[:10].lstrip("0")
+    return f"https://www.sec.gov/Archives/edgar/data/{cik}/{plain}/{a}-index.htm"
+
+
+def edgar_url_ok(url: str, acc: str, icik: str) -> bool:
+    """True for any official EDGAR representation of exactly this filing:
+    the filing-index page or the raw submission text, padded CIK or not
+    (EDGAR canonicalises both)."""
+    if not url or not acc:
+        return False
+    a = "".join(ch for ch in str(acc) if ch.isdigit() or ch == "-")
+    if not a:
+        return False
+    plain = a.replace("-", "")
+    cik = "".join(ch for ch in str(icik or "") if ch.isdigit()).lstrip("0") or plain[:10].lstrip("0")
+    ok_forms = []
+    for c in (cik, cik.zfill(10)):
+        ok_forms.append(f"https://www.sec.gov/Archives/edgar/data/{c}/{plain}/{a}-index.htm")
+        ok_forms.append(f"https://www.sec.gov/Archives/edgar/data/{c}/{plain}/{a}.txt")
+    return url in ok_forms
 
 
 def yf_history_url(tk: str, start: str, end: str) -> str:
@@ -127,11 +150,18 @@ def verify_positions(vids: list[dict]):
                     chk("gap=entry/insider-1", near(p.get("gap"), float(p["entry_px"]) / ipx - 1, 1e-4))
             url = edgar_url(p.get("acc"), p.get("icik"))
             chk("edgar_url_wellformed",
-                url == p.get("edgar_url") and "/Archives/edgar/data/" in url,
+                edgar_url_ok(p.get("edgar_url"), p.get("acc"), p.get("icik")),
                 f"{p.get('edgar_url')}")
             for h in ("r1", "r5", "r21", "r63", "r252"):
                 if p.get(h) is not None:
                     chk(f"{h}_date_present", bool(p.get(h + "_d")), f"{h}_d={p.get(h + '_d')}")
+                    chk(f"{h}_price_present", p.get(h + "_px") is not None,
+                        f"{h}_px={p.get(h + '_px')}")
+                    # Horizon return must equal its own exit close vs our entry.
+                    if p.get(h + "_px") is not None and p.get("entry_px"):
+                        want = float(p[h + "_px"]) / float(p["entry_px"]) - 1.0
+                        chk(f"{h}=exit_px/entry_px-1",
+                            near(p.get(h), want, 2e-4), f"{h}={p.get(h)} want {want:.4f}")
         else:
             chk("nonopen_has_no_entry_price", not p.get("entry_px"),
                 f"entry_px={p.get('entry_px')} status={status}")

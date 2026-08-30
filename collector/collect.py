@@ -696,9 +696,12 @@ def main():
     ap.add_argument("--force", action="store_true",
                     help="re-collect days already marked complete")
     ap.add_argument("--budget-min", type=float,
-                    default=float(os.environ.get("CEOTRADES_BUDGET_MIN", "80")),
+                    default=float(os.environ.get("CEOTRADES_BUDGET_MIN", "15")),
                     help="stop collecting new days after this many minutes; "
-                         "remaining days are picked up by the next nightly run")
+                         "remaining days are picked up by the next nightly run. "
+                         "The nightly workflow gives this step a small slice; "
+                         "history is backfilled efficiently by build_site.py "
+                         "from the SEC quarterly archives instead.")
     ap.add_argument("--no-backfill", action="store_true",
                     help="disable automatic history backfill before the window")
     ap.add_argument("--data-dir", default=os.path.join(os.path.dirname(__file__), "data"))

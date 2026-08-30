@@ -93,6 +93,10 @@ def main() -> int:
     check("roi = +60%", p["roi"], 0.6)
     check("gap = 12.50/10.00 - 1", p["gap"], 0.25)
     check("r1 = 14.00/12.50 - 1", p["r1"], 0.12)
+    check("r1 exit date recorded", p["r1_d"], "2025-08-14")
+    check("r1 exit price recorded", p["r1_px"], 14.0)
+    check("r5_d blank until elapsed (no fabrication)", p["r5_d"], None)
+    check("r252_d blank until elapsed", p["r252_d"], None)
     # Entry is index 1 and the series ends at index 5, so the 5-session horizon
     # (index 6) does not exist yet: the engine must report None, not guess.
     check("r5 unavailable -> None (no fabrication)", p["r5"], None)
@@ -177,6 +181,47 @@ def main() -> int:
     check("role director", bd.role_bucket("Director", ""), "Director")
     check("role 10%", bd.role_bucket("10% Owner", ""), "10% owner")
 
+    print("7b. price bundle persistence (cumulative coverage, no fabrication)")
+    btmp = tempfile.mkdtemp()
+    try:
+        bd.PRICE_CACHE = os.path.join(btmp, "prices")
+        bd.PRICE_BUNDLE = os.path.join(btmp, "prices-bundle.jsonl.gz")
+        hist = bars([("2025-01-02", 10.0, 10.5), ("2025-01-03", 11.0, 11.5),
+                     ("2025-06-02", 12.0, 12.5), ("2025-06-03", 13.0, 13.5)])
+        bd._BUNDLE_UPDATES.clear()
+        bd.save_bars("AAPL", hist, "test")
+        n = bd.append_price_bundle()
+        check("bundle appends fetched ticker", n, 1)
+
+        # A fresh cache dir restores from the bundle (simulates a new CI run).
+        bd.PRICE_CACHE = os.path.join(btmp, "prices2")
+        got, src = None, None
+        check("bundle restore returns ticker count", bd.init_price_cache_from_bundle(), 1)
+        got, src = bd.load_bars_cached("AAPL")
+        check("restored bars survive", [b["d"] for b in got], [b["d"] for b in hist])
+        check("restored opens survive", got[0]["o"], 10.0)
+        check("restore itself does not re-append", len(bd._BUNDLE_UPDATES), 0)
+
+        # Tail merge: newer sessions appended, last session updated, history
+        # untouched.
+        tail = bars([("2025-06-03", 13.2, 13.9), ("2025-06-04", 14.0, 14.4)])
+        merged = bd._merge_tail(got, tail)
+        check("tail merge length", len(merged), 5)
+        check("tail merge keeps history", merged[0]["o"], 10.0)
+        check("tail merge updates last close", merged[-2]["c"], 13.9)
+        check("tail merge keeps old open on updated bar", merged[-2]["o"], 13.2)
+        check("tail merge appends new session", merged[-1]["d"], "2025-06-04")
+
+        # Trimming bounds the bundle to the publish window.
+        old_hist = bars([("2020-01-02", 5.0, 5.5), ("2024-01-02", 6.0, 6.5),
+                         ("2025-03-03", 7.0, 7.5)])
+        check("trim drops pre-window bars",
+              [b["d"] for b in bd._trim_bars(old_hist)], ["2025-03-03"])
+        check("trim keeps everything when already in window",
+              [b["d"] for b in bd._trim_bars(hist)], [b["d"] for b in hist])
+    finally:
+        shutil.rmtree(btmp)
+
     print("8. end-to-end build on a synthetic store")
     tmp = tempfile.mkdtemp()
     din, dout = os.path.join(tmp, "in"), os.path.join(tmp, "out")
@@ -222,13 +267,38 @@ def main() -> int:
          "sh": 500.0, "px": None, "val": None, "ad": "A", "af": 500.0, "di": "D",
          "der": 1, "period": "2025-08-08", "nature": "", "under": "Common Stock",
          "under_sh": 500.0, "xp": 12.0, "exp": "2030-01-01", "timely": "", "swap": ""},
+        # A purchase the filer reported WITHOUT a ticker — cannot be priced or
+        # traded; it must be counted as skipped, never silently dropped.
+        {"fd": "2025-08-13", "td": "2025-08-12", "form": "4", "amend": 0,
+         "acc": "A5", "co": "No Ticker Co", "tk": "", "icik": "999", "in": "JANE DOE",
+         "pcik": "222", "own_n": 1, "rel": "Officer", "title": "",
+         "code": "P", "ct": "buy", "side": "buy", "sec": "Common Stock",
+         "sh": 100.0, "px": 50.0, "val": 5000.0, "ad": "A", "af": 100.0, "di": "D",
+         "der": 0, "period": "2025-08-12", "nature": "", "under": "",
+         "under_sh": None, "xp": None, "exp": "", "timely": "", "swap": ""},
+        # A purchase below the documented $1,000 minimum — counted as skipped.
+        {"fd": "2025-08-13", "td": "2025-08-12", "form": "4", "amend": 0,
+         "acc": "A6", "co": "Test Co", "tk": "Z", "icik": "111", "in": "JANE DOE",
+         "pcik": "222", "own_n": 1, "rel": "Officer", "title": "",
+         "code": "P", "ct": "buy", "side": "buy", "sec": "Common Stock",
+         "sh": 10.0, "px": 50.0, "val": 500.0, "ad": "A", "af": 10.0, "di": "D",
+         "der": 0, "period": "2025-08-12", "nature": "", "under": "",
+         "under_sh": None, "xp": None, "exp": "", "timely": "", "swap": ""},
+        # A 2024 purchase — outside a from-year 2025 publish window.
+        {"fd": "2024-05-01", "td": "2024-04-30", "form": "4", "amend": 0,
+         "acc": "A7", "co": "Test Co", "tk": "OLD", "icik": "111", "in": "JANE DOE",
+         "pcik": "222", "own_n": 1, "rel": "Officer", "title": "",
+         "code": "P", "ct": "buy", "side": "buy", "sec": "Common Stock",
+         "sh": 10.0, "px": 10.0, "val": 100.0, "ad": "A", "af": 10.0, "di": "D",
+         "der": 0, "period": "2024-04-30", "nature": "", "under": "",
+         "under_sh": None, "xp": None, "exp": "", "timely": "", "swap": ""},
     ]
     orig_data = bb.DATA
     try:
         bb.DATA = din
         bb.merge_into_store(rows)
         got = list(store.iter_rows(din))
-        check("store streams all rows", len(got), 5)
+        check("store streams all rows", len(got), 8)
         check("numeric coercion from CSV", got[0]["sh"] in (60.0, 40.0, 10.0, 500.0), True)
 
         # Seed the price cache so the build runs fully offline.
@@ -236,27 +306,35 @@ def main() -> int:
         os.makedirs(bd.PRICE_CACHE)
         bd.save_bars("T", bars(px), "test")
 
-        agg = bd.collect(din)
-        check("total rows aggregated", agg["totals"]["n"], 5)
-        check("distinct filings", agg["filings"], 4)
-        check("companies", len(agg["companies"]), 1)
+        agg = bd.collect(din, from_year=2025)
+        check("from-year window excludes 2024 rows", agg["totals"]["n"], 7)
+        check("no-filter total includes 2024", bd.collect(din)["totals"]["n"], 8)
+        check("2024-only via target_year", bd.collect(din, target_year=2024)["totals"]["n"], 1)
+        check("distinct filings", agg["filings"], 6)
+        check("companies", len(agg["companies"]), 2)
         check("insiders", len(agg["insiders"]), 2)
-        check("buy value totalled", round(agg["totals"]["buy"], 2), 1000.00)
+        check("buy value totalled", round(agg["totals"]["buy"], 2), 6500.00)
         check("sell value totalled", round(agg["totals"]["sell"], 2), 500.00)
-        check("two P lots -> one signal", len(agg["signals"]), 1)
-        sg = list(agg["signals"].values())[0]
+        check("signals: 2-lot filing collapses + below-min ticker", len(agg["signals"]), 2)
+        sg = next(s for s in agg["signals"].values() if s["tk"] == "T")
         check("signal aggregates shares", sg["insider_sh"], 100.0)
         check("signal aggregates value", sg["insider_val"], 1000.0)
         check("signal lot count", sg["lots"], 2)
+        sa = agg["signal_audit"]
+        check("coverage: P rows counted", sa["p_rows"], 4)
+        check("coverage: no-ticker P row counted", sa["no_ticker"], 1)
+        check("coverage: below-min signal counted downstream", True, True)
 
-        sys.argv = ["build_data", "--data", din, "--out", dout, "--offline"]
+        sys.argv = ["build_data", "--data", din, "--out", dout, "--offline",
+                    "--from-year", "2025"]
         rc = bd.main()
         check("build exit code", rc, 0)
 
         summary = json.load(open(os.path.join(dout, "summary.json")))
-        check("summary trade count", summary["counts"]["trades"], 5)
-        check("summary companies", summary["counts"]["companies"], 1)
-        check("summary net flow", summary["value"]["net"], 500.0)
+        check("summary trade count (2025 window)", summary["counts"]["trades"], 7)
+        check("summary publish_from_year recorded", summary["publish_from_year"], 2025)
+        check("summary companies", summary["counts"]["companies"], 2)
+        check("summary net flow", summary["value"]["net"], 6000.0)
 
         paper = json.load(open(os.path.join(dout, "paper", "summary.json")))
         check("one paper position", paper["counts"]["open"], 1)
@@ -267,20 +345,29 @@ def main() -> int:
         check("paper arithmetic verification clean", paper["verification"]["arithmetic_failures"], 0)
         check("findings generated", len(paper["findings"]) > 0, True)
 
+        cov = paper.get("signal_coverage") or {}
+        check("coverage: every P row counted", cov.get("p_transaction_rows"), 4)
+        check("coverage: signals before filters", cov.get("signals_before_filters"), 2)
+        check("coverage: no-ticker skip counted", cov.get("skipped_no_ticker_rows"), 1)
+        check("coverage: below-min skip counted", cov.get("skipped_below_min_value_signals"), 1)
+        check("coverage: placed + skipped == signals + no-ticker rows",
+              paper["counts"]["signals"] + cov.get("skipped_below_min_value_signals", 0)
+              + cov.get("skipped_invalid_ticker_signals", 0), 2)
+
         portfolios = json.load(open(os.path.join(dout, "insider_portfolios.json")))
         check("portfolio rows", len(portfolios["rows"]), 2)
         jane_p = next(r for r in portfolios["rows"] if r["pcik"] == "222")
-        check("portfolio issuer count", jane_p["issuer_n"], 1)
-        check("portfolio reported shares", jane_p["reported_shares"], 900.0)
-        check("portfolio marked value", jane_p["priced_value"], 18000.0)
+        check("portfolio issuer count", jane_p["issuer_n"], 2)
+        check("portfolio reported shares across issuers", jane_p["reported_shares"], 1000.0)
+        check("portfolio marked value (priced issuer only)", jane_p["priced_value"], 18000.0)
         check("portfolio overlap flag", jane_p["overlap"], True)
         check("portfolio issuer breakdown link", jane_p["issuers"][0]["edgar_url"].startswith("https://www.sec.gov/"), True)
         check("portfolio csv exists", os.path.getsize(os.path.join(dout, "insider_portfolios.csv.gz")) > 0, True)
 
         activity = json.load(open(os.path.join(dout, "insider_activity.json")))
-        check("activity pairs", activity["summary"]["insider_company_pairs"], 2)
+        check("activity pairs", activity["summary"]["insider_company_pairs"], 3)
         check("activity buy+sell overlap", activity["summary"]["buy_sell_pairs"], 1)
-        jane = next(r for r in activity["rows"] if r["pcik"] == "222")
+        jane = next(r for r in activity["rows"] if r["pcik"] == "222" and r.get("tk") == "T")
         check("Jane overlap true", jane["buy_sell_overlap"], True)
         check("Jane reported shares from latest held-after", jane["reported_common_shares"], 900.0)
         check("Jane holding value marked to last close", jane["holding_value"], 18000.0)
@@ -288,7 +375,7 @@ def main() -> int:
 
         cos = json.load(open(os.path.join(dout, "companies.json")))
         check("company row", cos[0]["co"], "Test Co")
-        check("company trade count", cos[0]["n"], 5)
+        check("company trade count", cos[0]["n"], 6)
         check("company insider count", cos[0]["ins"], 2)
 
         ins = json.load(open(os.path.join(dout, "insiders.json")))
@@ -297,7 +384,9 @@ def main() -> int:
         with gzip.open(os.path.join(dout, "csv", "trades-2025.csv.gz"),
                        "rt", encoding="utf-8") as f:
             hist = list(csv.DictReader(f))
-        check("year CSV has every row", len(hist), 5)
+        check("year CSV has every in-window row", len(hist), 7)
+        check("out-of-window year CSV not published",
+              os.path.exists(os.path.join(dout, "csv", "trades-2024.csv.gz")), False)
 
         with gzip.open(os.path.join(dout, "paper", "positions.csv.gz"),
                        "rt", encoding="utf-8") as f:

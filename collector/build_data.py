@@ -108,13 +108,13 @@ def _new_ins():
             "first": "", "last": ""}
 
 
-def collect(data_dir: str, target_year: int | None = None):
+def collect(data_dir: str, target_year: int | None = None, from_year: int = 0):
     """Aggregate rows from the store.
 
     When target_year is supplied, only rows whose SEC filing date falls in that
-    calendar year are published. Rows outside the target year are ignored rather
-    than carried into the UI, which prevents a 2025 build from accidentally
-    showing 2026 sample data.
+    calendar year are published. When from_year is supplied (>0), rows are
+    published from that year onward instead. Filters prevent a build from
+    accidentally showing data outside the intended window.
     """
     companies: dict[str, dict] = {}
     insiders: dict[str, dict] = {}
@@ -134,13 +134,23 @@ def collect(data_dir: str, target_year: int | None = None):
     signals: dict[tuple, dict] = {}
     activity: dict[tuple, dict] = {}
     activity_tickers: set[str] = set()
+    # Row-level accounting of every P-code buy: nothing may vanish silently.
+    sig_audit = {"p_rows": 0, "derivative": 0, "no_ticker": 0, "no_share_count": 0,
+                 "no_price_reported": 0, "not_common_equity": 0}
 
     cutoff = (datetime.now(timezone.utc) - timedelta(days=RECENT_DAYS)).strftime("%Y-%m-%d")
     first_fd, last_fd = "9999-99-99", ""
 
+    def in_window(fd: str) -> bool:
+        if target_year:
+            return len(fd) >= 4 and fd[:4] == str(target_year)
+        if from_year:
+            return len(fd) >= 4 and fd[:4].isdigit() and int(fd[:4]) >= from_year
+        return True
+
     for row_idx, r in enumerate(store.iter_rows(data_dir), 1):
         fd = r.get("fd") or ""
-        if target_year and (len(fd) < 4 or fd[:4] != str(target_year)):
+        if not in_window(fd):
             continue
         totals["n"] += 1
         code = (r.get("code") or "?")
@@ -331,8 +341,12 @@ def collect(data_dir: str, target_year: int | None = None):
                 del a["recent"][10:]
 
             af = r.get("af")
-            if tk and af is not None and af >= 0 and not r.get("der") and is_common_equity(r.get("sec") or ""):
-                activity_tickers.add(tk)
+            # Reported post-transaction common shares are tracked for every
+            # issuer (identified by CIK); a ticker is only needed to PRICE the
+            # stake, so no-ticker holdings stay as share counts, never dropped.
+            if af is not None and af >= 0 and not r.get("der") and is_common_equity(r.get("sec") or ""):
+                if tk:
+                    activity_tickers.add(tk)
                 hkey = ((r.get("sec") or "Common equity").strip().lower(),
                         r.get("di") or "", (r.get("nature") or "").strip().lower())
                 marker = (fd or "", r.get("td") or "", acc or "", row_idx)
@@ -358,6 +372,19 @@ def collect(data_dir: str, target_year: int | None = None):
                 del latest[RECENT_CAP:]
 
         # ---- paper-trade signal (code P, non-derivative, priced, has ticker) ----
+        if is_buy:
+            sig_audit["p_rows"] += 1
+            sh, px = r.get("sh"), r.get("px")
+            if r.get("der"):
+                sig_audit["derivative"] += 1
+            elif not tk:
+                sig_audit["no_ticker"] += 1
+            elif not (sh and sh > 0):
+                sig_audit["no_share_count"] += 1
+            elif not (px and px > 0):
+                sig_audit["no_price_reported"] += 1
+            elif not is_common_equity(r.get("sec") or ""):
+                sig_audit["not_common_equity"] += 1
         if is_buy and not r.get("der") and tk:
             sh, px = r.get("sh"), r.get("px")
             if sh and px and sh > 0 and px > 0 and is_common_equity(r.get("sec") or ""):
@@ -395,6 +422,7 @@ def collect(data_dir: str, target_year: int | None = None):
         "monthly": monthly, "yearly": yearly, "totals": totals,
         "filings": len(accs), "recent": recent, "signals": signals,
         "activity": activity, "activity_tickers": activity_tickers,
+        "signal_audit": sig_audit,
         "first_fd": "" if first_fd == "9999-99-99" else first_fd,
         "last_fd": last_fd,
     }
@@ -747,11 +775,13 @@ def write_insider_activity(agg, out_dir, marks_by_tk, target_year: int | None = 
     return payload
 
 
-def write_year_csvs(data_dir, out_dir, target_year: int | None = None):
+def write_year_csvs(data_dir, out_dir, target_year: int | None = None,
+                    from_year: int = 0):
     """Publish gzipped CSV exports by filing year.
 
-    A target-year build exports only that year; otherwise the complete local
-    history is exported one file per year.
+    A target-year build exports only that year; a from-year build exports that
+    year onward; otherwise the complete local history is exported one file per
+    year.
     """
     cdir = os.path.join(out_dir, "csv")
     os.makedirs(cdir, exist_ok=True)
@@ -767,6 +797,8 @@ def write_year_csvs(data_dir, out_dir, target_year: int | None = None):
             if not y.isdigit():
                 continue
             if target_year and y != str(target_year):
+                continue
+            if from_year and int(y) < from_year:
                 continue
             h = handles.get(y)
             if h is None:
@@ -787,7 +819,8 @@ def write_year_csvs(data_dir, out_dir, target_year: int | None = None):
     return dict(counts)
 
 
-def write_summary(agg, out_dir, paper_counts, target_year: int | None = None):
+def write_summary(agg, out_dir, paper_counts, target_year: int | None = None,
+                  from_year: int = 0):
     t = agg["totals"]
     months = sorted(agg["monthly"].items())
     code_rows = sorted(
@@ -800,6 +833,7 @@ def write_summary(agg, out_dir, paper_counts, target_year: int | None = None):
     summary = {
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "target_year": target_year,
+        "publish_from_year": from_year or None,
         "range": {"from": agg["first_fd"], "to": agg["last_fd"]},
         "counts": {
             "trades": t["n"], "filings": agg["filings"],
@@ -843,6 +877,12 @@ UA_MKT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko
           "Chrome/124.0 Safari/537.36")
 
 PRICE_CACHE = os.path.join(HERE, "data", "prices")
+PRICE_BUNDLE = os.path.join(HERE, "data", "prices-bundle.jsonl.gz")
+# Bars older than this are dropped when caching: published entries start at
+# CEOTRADES_PRICES_FROM (default 2024-06-01, comfortably before the 2025+
+# publish window), so this bounds the persistent bundle to the bars that can
+# ever be used for fills or marks.
+PRICES_FROM = os.environ.get("CEOTRADES_PRICES_FROM", "2024-06-01")
 STAKE = 10_000.0
 MIN_INSIDER_VALUE = 1_000.0   # ignore token purchases
 # A regular U.S. session always follows a filing within a few days (weekends,
@@ -871,7 +911,7 @@ _YAHOO_COOKIE = ""
 _YAHOO_CRUMB = ""
 
 
-def http_get(url: str, retries: int = 3, timeout: int = 45, extra_headers=None) -> bytes | None:
+def http_get(url: str, retries: int = 2, timeout: int = 20, extra_headers=None) -> bytes | None:
     global _YAHOO_COOKIE
     for attempt in range(retries + 1):
         MKT_THROTTLE.wait()
@@ -995,6 +1035,23 @@ def fetch_yahoo(tk: str):
     return None, "yahoo"
 
 
+def fetch_yahoo_tail(tk: str):
+    """Short recent-window fetch used to refresh marks on an existing cached
+    series (the historical entry bars stay in cache untouched)."""
+    sym = urllib.parse.quote(yahoo_symbol(tk), safe="-")
+    crumb = urllib.parse.quote(_yahoo_crumb() or "", safe="")
+    q = "?interval=1d&range=3mo"
+    if crumb:
+        q += f"&crumb={crumb}"
+    for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
+        raw = http_get(f"https://{host}/v8/finance/chart/{sym}{q}")
+        if raw:
+            bars = bars_from_yahoo(raw)
+            if bars:
+                return bars, f"yahoo:{host.split('.')[0]}"
+    return None, "yahoo"
+
+
 def fetch_stooq(tk: str):
     sym = yahoo_symbol(tk).lower() + ".us"
     raw = http_get("https://stooq.com/q/d/l/?s=" + urllib.parse.quote(sym) + "&i=d")
@@ -1067,7 +1124,7 @@ def cache_path(tk: str) -> str:
     return os.path.join(PRICE_CACHE, f"{yahoo_symbol(tk)}.json.gz")
 
 
-def load_bars_cached(tk: str, max_age_days: int = 3):
+def load_bars_cached(tk: str, max_age_days: int = 7):
     p = cache_path(tk)
     if not os.path.exists(p):
         return None, None
@@ -1087,7 +1144,55 @@ def load_bars_cached(tk: str, max_age_days: int = 3):
     return doc.get("bars") or None, ("cache-stale" if stale else doc.get("src") or "cache")
 
 
+# In-run record of cache updates to append to the persistent bundle at the end
+# of the build (last write per ticker wins).
+_BUNDLE_UPDATES: dict[str, dict] = {}
+
+
+def _trim_bars(bars):
+    """Drop bars older than PRICES_FROM — they can never become a fill or a
+    mark for the publish window, and this bounds the committed bundle size."""
+    if not PRICES_FROM or not bars:
+        return bars
+    try:
+        cut = date.fromisoformat(PRICES_FROM).isoformat()
+    except ValueError:
+        return bars
+    if bars[0].get("d", "") >= cut:
+        return bars
+    return [b for b in bars if b.get("d", "") >= cut] or bars
+
+
+def _merge_tail(old, tail):
+    """Merge a recently-fetched tail into cached bars without rewriting
+    history: append strictly newer sessions, refresh the latest session, never
+    touch older bars (entry fills stay immutable)."""
+    if not tail:
+        return old
+    if not old:
+        return list(tail)
+    out = list(old)
+    last_d = out[-1].get("d") or ""
+    seen = {b.get("d") for b in out}
+    for b in tail:
+        d = b.get("d") or ""
+        if not d:
+            continue
+        if d > last_d:
+            out.append(b)
+            last_d = d
+        elif d == last_d:
+            prev = out[-1]
+            out[-1] = {"d": d,
+                       "o": b.get("o") if b.get("o") else prev.get("o"),
+                       "c": b.get("c") if b.get("c") else prev.get("c")}
+        elif d in seen:
+            continue  # older session: the cached copy stands
+    return out
+
+
 def save_bars(tk: str, bars, src: str):
+    bars = _trim_bars(bars)
     os.makedirs(PRICE_CACHE, exist_ok=True)
     buf = io.BytesIO()
     with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=6, mtime=0) as gz:
@@ -1096,6 +1201,94 @@ def save_bars(tk: str, bars, src: str):
                             separators=(",", ":")).encode("utf-8"))
     with open(cache_path(tk), "wb") as f:
         f.write(buf.getvalue())
+    _BUNDLE_UPDATES[yahoo_symbol(tk)] = {"tk": tk, "src": src,
+                                         "fetched": date.today().isoformat(),
+                                         "bars": bars}
+
+
+def init_price_cache_from_bundle():
+    """Restore the hot cache from the committed bundle so nightly price
+    coverage is CUMULATIVE: tickers priced on earlier runs keep their verified
+    bars and only genuinely new names need fetching. Last update per ticker
+    wins; a corrupt bundle is ignored (the run then simply re-fetches)."""
+    if not os.path.exists(PRICE_BUNDLE):
+        return 0
+    restored = 0
+    try:
+        with gzip.open(PRICE_BUNDLE, "rt", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    doc = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                tk = doc.get("tk") or ""
+                if not tk or not doc.get("bars"):
+                    continue
+                save_bars(tk, doc["bars"], doc.get("src") or "bundle")
+                restored += 1
+    except (OSError, EOFError):
+        return 0
+    # The restore itself must not grow the bundle: only tickers actually
+    # fetched (new or refreshed) after this point are appended at the end.
+    _BUNDLE_UPDATES.clear()
+    return restored
+
+
+def append_price_bundle():
+    """Append this run's cache updates to the persistent bundle (one line per
+    updated ticker; last line wins on restore). Keeps the committed nightly
+    delta small: only tickers actually fetched this run are written. When
+    append-only duplication exceeds 2x, the bundle is compacted (last-wins)."""
+    if not _BUNDLE_UPDATES:
+        return 0
+    compacted = False
+    if os.path.exists(PRICE_BUNDLE):
+        last = {}
+        n_lines = 0
+        try:
+            with gzip.open(PRICE_BUNDLE, "rt", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    n_lines += 1
+                    try:
+                        doc = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if doc.get("tk") and doc.get("bars"):
+                        last[doc["tk"]] = doc
+        except (OSError, EOFError):
+            last, n_lines = {}, 0
+        if n_lines > 2 * max(1, len(last)):
+            buf = io.BytesIO()
+            with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=6,
+                               mtime=0) as gz:
+                for doc in last.values():
+                    gz.write((json.dumps(doc, separators=(",", ":")) + "\n")
+                             .encode("utf-8"))
+            with open(PRICE_BUNDLE, "wb") as f:
+                f.write(buf.getvalue())
+            compacted = True
+    with open(PRICE_BUNDLE, "ab") as rawf:
+        with gzip.GzipFile(fileobj=rawf, mode="ab", compresslevel=6, mtime=0) as f:
+            for doc in _BUNDLE_UPDATES.values():
+                f.write((json.dumps(doc, separators=(",", ":")) + "\n").encode("utf-8"))
+    return len(_BUNDLE_UPDATES) + (1 if compacted else 0)
+
+
+# Wall-clock deadline for market-data fetching (monotonic seconds). Set by
+# main() from --price-budget-min so a hanging provider can never push the
+# whole build past its job timeout: every provider attempt is preceded by a
+# deadline check and each HTTP call has a hard 20s socket timeout.
+PRICE_DEADLINE: float | None = None
+
+
+def _price_time_left() -> bool:
+    return PRICE_DEADLINE is None or time.monotonic() < PRICE_DEADLINE
 
 
 def get_bars(tk: str, offline: bool = False):
@@ -1104,7 +1297,17 @@ def get_bars(tk: str, offline: bool = False):
         return bars, src
     if offline:
         return (bars or []), (src or "none")
+    if bars and _price_time_left():
+        # Cached history exists but the mark is stale: refresh only the recent
+        # tail (cheap) and merge it without touching the entry-bar history.
+        tail, tsrc = fetch_yahoo_tail(tk)
+        if tail:
+            merged = _merge_tail(bars, tail)
+            save_bars(tk, merged, tsrc)
+            return merged, tsrc
     for fn in (fetch_yahoo, fetch_stooq, fetch_nasdaq):
+        if not _price_time_left():
+            break
         got, s = fn(tk)
         if got:
             save_bars(tk, got, s)
@@ -1215,9 +1418,15 @@ def simulate(sig, bars, asof):
                     "pnl": r2(mtm - STAKE), "roi": r4(mtm / STAKE - 1.0),
                     "hold": len(usable) - 1 - i})
     for key, n in (("r1", 1), ("r5", 5), ("r21", 21), ("r63", 63), ("r252", 252)):
+        out.setdefault(key + "_d", None)
+        out.setdefault(key + "_px", None)
         j = i + n
         if j < len(usable) and usable[j].get("c"):
             out[key] = r4(float(usable[j]["c"]) / epx - 1.0)
+            # Exit date and exit price for the horizon: the concrete session
+            # close a follower would have received, auditable line by line.
+            out[key + "_d"] = usable[j]["d"]
+            out[key + "_px"] = r4(float(usable[j]["c"]))
     return out
 
 
@@ -1457,10 +1666,12 @@ def equity_curve(positions):
     return out
 
 
-def write_paper(positions, out_dir):
+def write_paper(positions, out_dir, coverage: dict | None = None):
     pdir = os.path.join(out_dir, "paper")
     os.makedirs(pdir, exist_ok=True)
     a = analyze(positions)
+    if coverage:
+        a["signal_coverage"] = coverage
     jdump(a, os.path.join(pdir, "summary.json"))
     jdump(equity_curve(positions), os.path.join(pdir, "equity.json"))
 
@@ -1468,7 +1679,10 @@ def write_paper(positions, out_dir):
     cols = ["id", "status", "entry_rule_status", "fd", "td", "entry_d", "tk", "co",
             "insider", "rel", "title", "sec", "lots", "insider_sh", "insider_px",
             "insider_val", "entry_px", "gap", "shares", "stake", "last_d", "last_px",
-            "mtm", "pnl", "roi", "r1", "r5", "r21", "r63", "r252", "delay_td_fd",
+            "mtm", "pnl", "roi",
+            "r1", "r1_d", "r1_px", "r5", "r5_d", "r5_px", "r21", "r21_d", "r21_px",
+            "r63", "r63_d", "r63_px", "r252", "r252_d", "r252_px",
+            "delay_td_fd",
             "delay_fd_entry", "hold", "price_src", "entry_check", "edgar_url",
             "yahoo_history_url", "stooq_url", "acc",
             "form", "amend", "icik", "pcik"]
@@ -1501,6 +1715,8 @@ def main() -> int:
     ap.add_argument("--out", default=SITE_DATA)
     ap.add_argument("--year", type=int, default=0,
                     help="publish only this SEC filing year (0 = all local rows)")
+    ap.add_argument("--from-year", type=int, default=0,
+                    help="publish rows filed in this year or later (0 = no lower bound)")
     ap.add_argument("--offline", action="store_true",
                     help="use only cached prices (no network)")
     ap.add_argument("--max-tickers", type=int, default=0,
@@ -1512,6 +1728,7 @@ def main() -> int:
                     help="target year for completeness/audit artifacts (default: --year or current year)")
     args = ap.parse_args()
     target_year = args.year or None
+    from_year = args.from_year or 0
     audit_year = args.audit_year or target_year or audit_mod.asof_today().year
 
     if not store.shard_files(args.data):
@@ -1521,7 +1738,9 @@ def main() -> int:
     log("Pass 1: streaming trade store …")
     if target_year:
         log(f"  filtering to SEC filing year {target_year}")
-    agg = collect(args.data, target_year=target_year)
+    elif from_year:
+        log(f"  filtering to SEC filing years >= {from_year}")
+    agg = collect(args.data, target_year=target_year, from_year=from_year)
     t = agg["totals"]
     log(f"  {t['n']:,} rows | {agg['filings']:,} filings | "
         f"{len(agg['companies']):,} companies | {len(agg['insiders']):,} insiders")
@@ -1529,17 +1748,44 @@ def main() -> int:
 
     log("Pass 2: pricing insider-buy signals …")
     sigs = []
+    dropped_min_value = dropped_bad_ticker = 0
     for s in agg["signals"].values():
-        if s["insider_sh"] <= 0 or s["insider_val"] < MIN_INSIDER_VALUE:
+        if s["insider_sh"] <= 0:
+            dropped_min_value += 1
+            continue
+        if s["insider_val"] < MIN_INSIDER_VALUE:
+            dropped_min_value += 1
             continue
         if not valid_ticker(s["tk"]):
+            dropped_bad_ticker += 1
             continue
         s["insider_px"] = r4(s["insider_val"] / s["insider_sh"])
         s["insider_sh"] = r4(s["insider_sh"])
         s["insider_val"] = r2(s["insider_val"])
         sigs.append(s)
     sigs.sort(key=lambda s: (s["fd"], s["tk"]))
-    log(f"  {len(sigs):,} qualifying buy signals")
+    sa = agg.get("signal_audit") or {}
+    coverage = {
+        "p_transaction_rows": sa.get("p_rows", 0),
+        "signals_before_filters": len(agg["signals"]),
+        "skipped_derivative_rows": sa.get("derivative", 0),
+        "skipped_no_ticker_rows": sa.get("no_ticker", 0),
+        "skipped_no_share_count_rows": sa.get("no_share_count", 0),
+        "skipped_no_reported_price_rows": sa.get("no_price_reported", 0),
+        "skipped_not_common_equity_rows": sa.get("not_common_equity", 0),
+        "skipped_below_min_value_signals": dropped_min_value,
+        "skipped_invalid_ticker_signals": dropped_bad_ticker,
+        "min_insider_value_usd": MIN_INSIDER_VALUE,
+        "note": ("Every P-code buy is accounted for: rows that cannot define a "
+                 "position (derivative, no ticker, no share count, no reported "
+                 "price, non-common security) or are below the documented "
+                 f"${MIN_INSIDER_VALUE:,.0f} minimum are counted here, never "
+                 "silently dropped."),
+    }
+    log(f"  {len(sigs):,} qualifying buy signals "
+        f"({dropped_min_value:,} below ${MIN_INSIDER_VALUE:,.0f}, "
+        f"{dropped_bad_ticker:,} invalid ticker; "
+        f"{sa.get('no_ticker', 0):,} P-rows had no ticker at all)")
 
     by_tk = defaultdict(list)
     for s in sigs:
@@ -1558,8 +1804,16 @@ def main() -> int:
     marks_by_tk = {}
     priced_tickers = set()
     price_deadline = None
+    global PRICE_DEADLINE
+    PRICE_DEADLINE = None
     if args.price_budget_min and args.price_budget_min > 0:
         price_deadline = time.monotonic() + args.price_budget_min * 60.0
+        PRICE_DEADLINE = price_deadline
+
+    if not args.offline:
+        n_restored = init_price_cache_from_bundle()
+        if n_restored:
+            log(f"  price cache restored from bundle: {n_restored:,} tickers")
     for i, tk in enumerate(tickers, 1):
         if price_deadline is not None and time.monotonic() > price_deadline:
             bars, src = [], "price_budget_exhausted"
@@ -1596,7 +1850,12 @@ def main() -> int:
 
     log("Pass 3: writing site data …")
     os.makedirs(args.out, exist_ok=True)
-    paper = write_paper(positions, args.out)
+    if not args.offline:
+        n_appended = append_price_bundle()
+        if n_appended:
+            log(f"  price bundle updated with {n_appended:,} ticker(s) "
+                f"(cumulative coverage for the next run)")
+    paper = write_paper(positions, args.out, coverage=coverage)
     nco, nb = write_companies(agg, args.out)
     nins = write_insiders(agg, args.out)
     activity = write_insider_activity(agg, args.out, marks_by_tk, target_year=target_year)
@@ -1612,8 +1871,10 @@ def main() -> int:
         w.writeheader()
         for r in agg["recent"]:
             w.writerow({k: r.get(k) for k in COMPACT_KEYS})
-    ycounts = write_year_csvs(args.data, args.out, target_year=target_year)
-    summary = write_summary(agg, args.out, paper["counts"], target_year=target_year)
+    ycounts = write_year_csvs(args.data, args.out, target_year=target_year,
+                              from_year=from_year)
+    summary = write_summary(agg, args.out, paper["counts"], target_year=target_year,
+                            from_year=from_year)
     report_path = (os.path.join(ROOT, "INSIDER_TRADING_FORENSIC_REPORT.md")
                    if os.path.abspath(args.out) == os.path.abspath(SITE_DATA) else None)
     audit = audit_mod.write_audit(args.data, args.out, audit_year, report_path)

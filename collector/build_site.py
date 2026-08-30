@@ -22,10 +22,13 @@ Time-budgeted: the backfill stops before the workflow's limit and the
 remaining quarters are picked up by the next scheduled run.
 
 Environment:
-  CEOTRADES_TARGET_YEAR    target filing year to publish (default 2025 for the current project)
-  CEOTRADES_BACKFILL_MIN   legacy all-history backfill minutes when CEOTRADES_TARGET_YEAR=0
+  CEOTRADES_TARGET_YEAR    target filing year to collect/audit (default: current UTC year)
+  CEOTRADES_BACKFILL_FROM  first filing year to backfill + publish (default: target-1; 0 disables)
+  CEOTRADES_TOTAL_BUDGET_MIN  wall-clock budget for the whole build (default 95; the
+                           GitHub Actions job timeout is 120 min)
   CEOTRADES_SKIP_BACKFILL  set to "1" to skip legacy all-history backfill
   CEOTRADES_PRICE_MIN      optional minutes budget for price fetching (target mode defaults to offline/no fabricated prices)
+  CEOTRADES_RESET_YEAR     set to "1" to purge+rebuild the target year's shards (occasional clean rebuilds only)
 """
 from __future__ import annotations
 
@@ -35,7 +38,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import date
+from datetime import date, timedelta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -83,11 +86,11 @@ def save_state(st: dict):
         json.dump(st, f, indent=1, sort_keys=True)
 
 
-def all_quarters() -> list[str]:
-    """Every quarter from 2006Q1 through the current one, NEWEST FIRST."""
+def all_quarters(from_year: int = 0) -> list[str]:
+    """Every quarter from `from_year` (or 2006) through the current one, NEWEST FIRST."""
     today = date.today()
     out = []
-    for y in range(bb.FIRST_YEAR, today.year + 1):
+    for y in range(max(bb.FIRST_YEAR, from_year or bb.FIRST_YEAR), today.year + 1):
         for q in range(1, 5):
             if y == today.year and (q - 1) * 3 + 1 > today.month:
                 break
@@ -109,14 +112,27 @@ def ingest(label: str) -> tuple[bool, int]:
     return True, len(rows)
 
 
-def backfill(budget_min: float) -> None:
+def _quarter_end_of(label: str) -> date:
+    y, q = int(label[:4]), int(label[-1])
+    return date(y, 3 * q, 1) - timedelta(days=1) if q < 4 else date(y, 12, 31)
+
+
+def backfill(budget_min: float, from_year: int = 0) -> None:
     st = load_state()
     done = set(st.get("done", []))
     unavailable = set(st.get("unavailable", []))
-    quarters = all_quarters()
+    quarters = all_quarters(from_year)
+    today = date.today()
 
-    # The two most recent quarters are always refreshed (amendments arrive late).
-    refresh = quarters[:2]
+    # The two most recent quarters are refreshed while still inside the
+    # late-filing/amendment window. Once a quarter ended more than
+    # QUARTER_REFRESH_DAYS ago and is already ingested, re-downloading it
+    # would rewrite a multi-MB store shard for no data change — skip it.
+    refresh = [q for q in quarters[:2]
+               if q not in done or (today - _quarter_end_of(q)).days <= 45]
+    if len(refresh) < 2:
+        skipped = [q for q in quarters[:2] if q not in refresh]
+        log(f"Refresh skip (ingested, quarter ended >45d ago): {', '.join(skipped)}")
     todo = [q for q in quarters if q not in done and q not in unavailable]
 
     log(f"Backfill: {len(done)} quarters ingested, {len(todo)} remaining, "
@@ -161,7 +177,7 @@ def backfill(budget_min: float) -> None:
     st["done"] = sorted(done)
     st["unavailable"] = sorted(unavailable)
     save_state(st)
-    remaining = [q for q in all_quarters() if q not in done and q not in unavailable]
+    remaining = [q for q in all_quarters(from_year) if q not in done and q not in unavailable]
     log(f"Backfill state: {len(done)} done, {len(remaining)} remaining"
         + (f" (next: {remaining[0]})" if remaining else " — history complete"))
 
@@ -257,22 +273,66 @@ def write_empty_outputs():
         f.write(",".join(build_data.COMPACT_KEYS) + "\n")
 
 
+def _total_budget_min() -> float:
+    """Wall-clock budget for the WHOLE build. The nightly GitHub Actions job is
+    capped at 120 minutes; default 95 leaves headroom for checkout, self-test,
+    the earlier collect.py step and the commit/push step."""
+    raw = os.environ.get("CEOTRADES_TOTAL_BUDGET_MIN", "85").strip()
+    try:
+        v = float(raw)
+    except ValueError:
+        v = 95.0
+    return max(5.0, min(v, 115.0))
+
+
+def _backfill_from(target: int) -> int:
+    """First filing year to backfill and publish (target-1 by default so the
+    paper book covers at least a rolling two-year window; 0 disables)."""
+    raw = os.environ.get("CEOTRADES_BACKFILL_FROM", str(target - 1)).strip()
+    if raw in ("", "0", "off", "none"):
+        return 0
+    try:
+        v = int(raw)
+    except ValueError:
+        return max(0, target - 1)
+    return max(0, min(v, target))
+
+
 def main() -> int:
+    t_start = time.monotonic()
+    budget = _total_budget_min()
     target = _target_year()
 
     if target:
-        # Target-year mode is used for the no-hallucination corpus builds. It
-        # gathers the requested year from official SEC sources and publishes only
-        # that filing year, so stale rows from another year cannot leak into the
-        # site. Price fetching is intentionally offline by default here: absent
-        # market bars become no_price instead of synthetic paper P&L.
-        log(f"Target-year SEC collection: {target}")
+        # Target-year mode: incremental nightly collection of the current year
+        # (SEC quarterly archives for completed quarters + EDGAR daily index for
+        # the current one), plus a resumable backfill of earlier years within
+        # CEOTRADES_BACKFILL_FROM. Nightly runs are NON-destructive: shards and
+        # day markers persist and rows de-duplicate on the stable identity key,
+        # so the current quarter is collected once and then extended, not
+        # re-scanned from its first day on every run.
+        from_year = _backfill_from(target)
+        log(f"Target-year SEC collection: {target} "
+            f"(publish window {from_year or target}..{target}, budget {budget:.0f} min)")
+
+        collect_budget = min(35.0, budget * 0.4)
         cmd = [sys.executable, os.path.join(HERE, "collect_ytd.py"),
-               "--year", str(target), "--replace-year", "--rate", "8"]
+               "--year", str(target), "--rate", "8",
+               "--daily-budget-min", f"{collect_budget:.0f}"]
+        if os.environ.get("CEOTRADES_RESET_YEAR") == "1":
+            log("CEOTRADES_RESET_YEAR=1 — purging target-year shards for a clean rebuild")
+            cmd.append("--replace-year")
         rc = subprocess.call(cmd)
         if rc != 0:
             log(f"! target-year collection failed with exit code {rc}")
             return rc
+
+        if from_year and os.environ.get("CEOTRADES_SKIP_BACKFILL") != "1":
+            backfill_left = budget - (time.monotonic() - t_start) / 60.0 - 10.0
+            try:
+                backfill(max(2.0, backfill_left), from_year)
+            except Exception as e:  # noqa: BLE001
+                log(f"! backfill aborted: {e} — continuing to the site build")
     else:
         if os.environ.get("CEOTRADES_SKIP_BACKFILL") != "1":
             try:
@@ -292,12 +352,33 @@ def main() -> int:
     log("\nBuilding site data …")
     sys.argv = ["build_data"]
     if target:
-        sys.argv += ["--year", str(target), "--audit-year", str(target)]
+        if from_year and from_year < target:
+            # Publish the backfilled window AND the target year so paper
+            # positions cover every tracked insider buy, not just this year's.
+            sys.argv += ["--from-year", str(from_year), "--audit-year", str(target)]
+        else:
+            sys.argv += ["--year", str(target), "--audit-year", str(target)]
         if os.environ.get("CEOTRADES_OFFLINE") == "1":
             sys.argv.append("--offline")
+        # Whatever wall-clock budget is left (minus a safety margin and the
+        # verification pass) goes to price fetching.
         if "CEOTRADES_PRICE_MIN" not in os.environ:
-            sys.argv += ["--price-budget-min", "70"]
-    return build_data.main()
+            left = budget - (time.monotonic() - t_start) / 60.0
+            sys.argv += ["--price-budget-min", f"{max(2.0, left - 8.0):.0f}"]
+    rc = build_data.main()
+    if rc != 0:
+        return rc
+
+    # Line-by-line verification of the published artifacts (offline, fast).
+    # Regenerates data/verification.json + VERIFICATION.md on every build so
+    # they can never go stale. Exit code 1 fails the build: no unverified
+    # publish.
+    log("\nLine-by-line verification …")
+    vrc = subprocess.call([sys.executable, os.path.join(HERE, "verify_lines.py")])
+    if vrc != 0:
+        log("! line-by-line verification FAILED — refusing to report success")
+        return vrc
+    return 0
 
 
 def commit_diagnostics() -> None:
