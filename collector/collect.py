@@ -40,6 +40,7 @@ import gzip
 import io
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -164,9 +165,11 @@ def http_get(url: str, retries: int = 3, timeout: int = 30):
             last_err = f"HTTP {e.code} for {url}"
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
             last_err = f"{type(e).__name__}: {e} for {url}"
-        # Backoff: 5s, 15s, 45s (SEC may temporarily rate-limit).
+        # Backoff: 6s, 18s, 54s with ±30% jitter (SEC may temporarily
+        # rate-limit or block a source IP; jitter avoids lockstep re-hits).
         if attempt < retries:
-            time.sleep(5 * (3 ** attempt))
+            delay = 6 * (3 ** attempt)
+            time.sleep(delay * (0.7 + 0.6 * random.random()))
     LAST_HTTP_FAILED = True
     log(f"  ! giving up: {last_err}")
     STATS["errors"].append(last_err)

@@ -1,126 +1,122 @@
 #!/usr/bin/env python3
-"""CEOTrades dispatchable task runner (GitHub Actions 'CEOTrades backfill').
+"""Dispatchable task runner for the CEOTrades backfill workflow.
 
-tasks:
-  diag      probe official SEC + market endpoints -> collector/data/logs/diag_net.log
-  quarters  resumable SEC quarterly ZIP backfill into the local store (no site build)
-  build     paper simulation + site artifacts + line-by-line verification (no collection)
-  full      build_site.py orchestrator (daily + quarterly + build), env-driven
+The scheduled workflow can only run a fixed pipeline; this runner lets a
+maintainer dispatch richer operations from the Actions UI / gh CLI while
+reusing exactly the same modules, state and safety gates as the nightly
+build:
 
-Environment knobs (see build_site.py / build_data.py):
-  CEOTRADES_TOTAL_BUDGET_MIN   wall-clock budget for the job
-  CEOTRADES_QUARTERS_FROM      first year for the quarters task
-  CEOTRADES_TARGET_YEAR        target/audit year (full task)
-  CEOTRADES_BACKFILL_FROM      first year to backfill (full task)
-  CEOTRADES_PUBLISH_FROM       first year published on the site
-  CEOTRADES_PAPER_FROM         first year for the $10k paper simulation
-  CEOTRADES_FROM_YEAR          publish from-year for the build task
-  CEOTRADES_PRICE_MIN          minutes of market-data fetching (build task)
-  CEOTRADES_OFFLINE            "1" = build with cached prices only
+  diag      probe every upstream (SEC/Yahoo/Stooq/Nasdaq) -> diag_net.log
+  quarters  resumable quarterly-ZIP backfill only (no site build)
+  build     site build + paper simulation + line-by-line verification only
+  full      the complete nightly path (target-year collection + backfill +
+            build + verification), driven by the standard env knobs
 
-Standard library only.
+Environment knobs (same names as build_site.py):
+  CEOTRADES_TARGET_YEAR     target filing year to collect/audit (default: current UTC year)
+  CEOTRADES_BACKFILL_FROM   first filing year to backfill (default: 2006; 0 disables)
+  CEOTRADES_PUBLISH_FROM    first filing year published on the site
+  CEOTRADES_PAPER_FROM      first filing year for the $10k paper simulation (default: 2024)
+  CEOTRADES_TOTAL_BUDGET_MIN  wall-clock budget in minutes (default: 85)
+  CEOTRADES_PRICE_MIN       minutes budget for price fetching (default: leftover)
+  CEOTRADES_OFFLINE=1       build without any network
+  CEOTRADES_SKIP_DIAG=1     skip the diagnostic probe step
+  CEOTRADES_SKIP_BACKFILL=1 skip the legacy all-history backfill
 """
 from __future__ import annotations
 
-import argparse
 import os
 import subprocess
 import sys
+import time
+from datetime import date
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
-LOG_DIR = os.path.join(HERE, "data", "logs")
+import build_site  # noqa: E402
 
 
-def env(name: str, default: str) -> str:
-    v = os.environ.get(name, "").strip()
-    return v if v else default
+def log(m: str) -> None:
+    print(m, flush=True)
 
 
-def log(msg: str):
-    print(msg, flush=True)
+def run_diag() -> int:
+    import diag_net
+    return diag_net.main()
 
 
-def run_with_log(name: str, cmd: list) -> int:
-    os.makedirs(LOG_DIR, exist_ok=True)
-    path = os.path.join(LOG_DIR, f"{name}.log")
-    line = "$ " + " ".join(str(c) for c in cmd)
-    log(line)
-    with open(path, "a", encoding="utf-8") as lf:
-        lf.write(line + "\n")
-        rc = subprocess.call(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT)
-        lf.write(f"\nexit={rc}\n")
-    return rc
-
-
-def task_diag() -> int:
-    return run_with_log("tasks_diag", [sys.executable, os.path.join(HERE, "diag_net.py")])
-
-
-def task_quarters() -> int:
-    import runlog
-    runlog.start("tasks_quarters")
-    try:
-        from_year = int(env("CEOTRADES_QUARTERS_FROM", "2006") or 2006)
-    except ValueError:
-        from_year = 2006
-    try:
-        budget = max(5.0, float(env("CEOTRADES_TOTAL_BUDGET_MIN", "300")))
-    except ValueError:
-        budget = 300.0
-    import build_site
-    build_site.backfill(max(2.0, budget - 2.0), from_year)
+def run_quarters(budget_min: float, from_year: int) -> int:
+    log(f"== quarterly backfill: from {from_year}, budget {budget_min:.0f} min")
+    build_site.backfill(budget_min, from_year)
     return 0
 
 
-def task_build() -> int:
-    cmd = [sys.executable, os.path.join(HERE, "build_data.py")]
-    try:
-        target = int(env("CEOTRADES_TARGET_YEAR", "0") or 0)
-    except ValueError:
-        target = 0
-    try:
-        from_year = int(env("CEOTRADES_FROM_YEAR", "0") or 0)
-    except ValueError:
-        from_year = 0
-    try:
-        paper_from = int(env("CEOTRADES_PAPER_FROM", "0") or 0)
-    except ValueError:
-        paper_from = 0
-    if from_year and target and from_year < target:
-        cmd += ["--from-year", str(from_year), "--paper-from-year", str(paper_from),
-                "--audit-year", str(target)]
-    elif target:
-        cmd += ["--year", str(target), "--audit-year", str(target)]
-    elif from_year:
-        cmd += ["--from-year", str(from_year), "--paper-from-year", str(paper_from)]
-    if env("CEOTRADES_OFFLINE", "0") == "1":
-        cmd.append("--offline")
+def run_build(budget_min: float, target: int) -> int:
+    """Site build + verification without touching SEC collection."""
+    import build_data
+    import store
+    shards = store.shard_files(build_site.DATA)
+    log(f"\nStore: {len(shards)} shard(s)")
+    if not shards:
+        log("No data collected yet — writing empty (but valid) site artifacts.")
+        build_site.write_empty_outputs()
+        return 1
+    publish_from = build_site._publish_from(target)
+    paper_from = build_site._paper_from()
+    sys.argv = ["build_data"]
+    if publish_from and publish_from < target:
+        sys.argv += ["--from-year", str(publish_from),
+                     "--paper-from-year", str(max(paper_from, publish_from)),
+                     "--audit-year", str(target)]
     else:
-        price_min = env("CEOTRADES_PRICE_MIN", "")
-        if price_min:
-            cmd += ["--price-budget-min", price_min]
-    rc = run_with_log("tasks_build", cmd)
+        sys.argv += ["--year", str(target), "--audit-year", str(target)]
+    if os.environ.get("CEOTRADES_OFFLINE") == "1":
+        sys.argv.append("--offline")
+    elif os.environ.get("CEOTRADES_PRICE_MIN") is None:
+        sys.argv += ["--price-budget-min", f"{max(2.0, budget_min - 8.0):.0f}"]
+    log("\nBuilding site data …")
+    rc = build_data.main()
     if rc != 0:
         return rc
-    return run_with_log("tasks_verify",
-                        [sys.executable, os.path.join(HERE, "verify_lines.py")])
-
-
-def task_full() -> int:
-    return run_with_log("tasks_full", [sys.executable, os.path.join(HERE, "build_site.py")])
+    log("\nLine-by-line verification …")
+    return subprocess.call([sys.executable, os.path.join(HERE, "verify_lines.py")])
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="CEOTrades backfill task runner")
-    ap.add_argument("--task", required=True,
-                    choices=["diag", "quarters", "build", "full"])
-    args = ap.parse_args()
-    return {"diag": task_diag, "quarters": task_quarters,
-            "build": task_build, "full": task_full}[args.task]()
+    task = os.environ.get("TASK", "full").strip()
+    t_start = time.monotonic()
+    try:
+        # Cap at 340: the backfill workflow's job timeout is 345 minutes.
+        budget = min(340.0, max(5.0, float(os.environ.get("CEOTRADES_TOTAL_BUDGET_MIN", "85"))))
+    except ValueError:
+        budget = 85.0
+    target = build_site._target_year()
+    from_year = build_site._backfill_from(target)
+
+    log(f"CEOTrades task runner: {task} (target {target or 'all-years'}, "
+        f"backfill from {from_year}, budget {budget:.0f} min)")
+
+    if task == "diag":
+        return run_diag()
+
+    if task == "quarters":
+        if from_year <= 0:
+            log("CEOTRADES_BACKFILL_FROM disables the backfill; nothing to do.")
+            return 0
+        return run_quarters(budget - 1.0, from_year)
+
+    if task == "build":
+        return run_build(budget - 1.0, target)
+
+    if task == "full":
+        log("== full nightly path via build_site.main()")
+        return build_site.main()
+
+    log(f"unknown task {task!r} (want diag|quarters|build|full)")
+    return 2
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

@@ -161,6 +161,67 @@ def main() -> int:
     check("engine: normal case still opens", q3["status"], "open")
     check("engine: normal entry price", q3["entry_px"], 12.5)
 
+    print("5c. split events crossing a holding period")
+    # 1-for-40 reverse split, unadjusted pre-split bars (series mixes classes):
+    # entry open 10.00 pre-split, later bars post-split at ~400. Raw series
+    # return would be a bogus +3900%; the engine must detect the jump and
+    # recompute on split-adjusted shares.
+    split_sig = {"id": "SPL", "tk": "T", "co": "Test", "fd": "2025-08-12",
+                 "td": "2025-08-08", "insider_px": 9.00, "insider_sh": 100.0,
+                 "insider_val": 900.0, "rel": "Officer", "title": "CEO",
+                 "acc": "A1", "icik": "111"}
+    mixed = [{"d": "2025-08-11", "o": 9.0, "c": 9.5},
+             {"d": "2025-08-12", "o": 9.8, "c": 10.0},
+             {"d": "2025-08-13", "o": 10.0, "c": 10.2},   # entry open 10.00
+             {"d": "2025-08-14", "o": 10.4, "c": 10.4},   # r1 exit, pre-split
+             {"d": "2025-08-15", "o": 410.0, "c": 420.0},  # post 1:40 reverse split
+             {"d": "2025-08-18", "o": 430.0, "c": 440.0},
+             {"d": "2025-08-19", "o": 450.0, "c": 460.0},
+             {"d": "2025-08-20", "o": 470.0, "c": 480.0},  # r5 would exit here
+             {"d": "2025-08-21", "o": 490.0, "c": 500.0},
+             {"d": "2025-08-22", "o": 510.0, "c": 520.0}]  # last close
+    splits_mixed = [{"d": "2025-08-15", "ratio": 40.0, "num": 1, "den": 40}]
+    pm = bd.simulate(split_sig, mixed, "2025-08-22", splits=splits_mixed)
+    check("mixed: split flagged", pm["split_flag"], True)
+    check("mixed: roi_status", pm["roi_status"], "mixed_pre_post_split")
+    check("mixed: gap blanked (as-filed vs adjusted incomparable)", pm["gap"], None)
+    check("mixed: shares 10000/10.00", pm["shares"], 1000.0)
+    check("mixed: shares after 1:40", pm["shares_after_split"], 25.0)
+    check("mixed: mtm = 25 * 520", pm["mtm"], 13000.00)
+    check("mixed: roi corrected = +30%", pm["roi"], 0.3)
+    check("mixed: roi_corrected equals roi", pm["roi_corrected"], 0.3)
+    # r1 exits pre-split (same share class as the entry) and stays valid.
+    check("mixed: r1 pre-split exit kept", pm["r1"], 0.04)
+    check("mixed: r1_d kept", pm["r1_d"], "2025-08-14")
+    # r5 would exit post-split (mixed classes) and must be blanked.
+    check("mixed: r5 blanked", pm["r5"], None)
+    check("mixed: r5_d blanked", pm["r5_d"], None)
+    # Split-adjusted series: continuity across the event (~jump 1) -> returns
+    # computed from the series remain valid, no share correction.
+    adj = [{"d": "2025-08-13", "o": 10.0, "c": 10.2},
+           {"d": "2025-08-14", "o": 10.4, "c": 10.4},
+           {"d": "2025-08-15", "o": 10.8, "c": 11.2}]
+    pa = bd.simulate(split_sig, adj, "2025-08-19", splits=splits_mixed)
+    check("adjusted: split flagged", pa["split_flag"], True)
+    check("adjusted: roi_status", pa["roi_status"], "split_adjusted_series")
+    check("adjusted: roi from series kept", pa["roi"], 0.12)
+    check("adjusted: no share correction", pa["shares_after_split"], None)
+    # Indeterminate jump (neither ~1 nor ~ratio) -> flagged for manual review.
+    ind = [{"d": "2025-08-13", "o": 10.0, "c": 10.2},
+           {"d": "2025-08-14", "o": 10.4, "c": 10.4},
+           {"d": "2025-08-15", "o": 38.0, "c": 40.0}]
+    pi = bd.simulate(split_sig, ind, "2025-08-19", splits=splits_mixed)
+    check("indeterminate: roi_status", pi["roi_status"], "split_event_review")
+    check("indeterminate: raw series roi retained as working value",
+          pi["roi"], 3.0)
+    check("indeterminate: no share correction", pi["shares_after_split"], None)
+    check("no splits -> clean path untouched",
+          bd.simulate(sig, bars(px), "2025-08-19")["split_flag"], False)
+    # Splits before entry do not affect an entry made after the event.
+    pre_splits = [{"d": "2025-08-12", "ratio": 40.0, "num": 1, "den": 40}]
+    check("pre-entry split ignored", bd.simulate(sig, bars(px), "2025-08-19",
+                                                 splits=pre_splits)["split_flag"], False)
+
     print("6. statistics")
     s = bd.stats([0.1, -0.1, 0.3, 0.5, -0.2])
     check("n", s["n"], 5)
@@ -197,7 +258,7 @@ def main() -> int:
         bd.PRICE_CACHE = os.path.join(btmp, "prices2")
         got, src = None, None
         check("bundle restore returns ticker count", bd.init_price_cache_from_bundle(), 1)
-        got, src = bd.load_bars_cached("AAPL")
+        got, src, _splits = bd.load_bars_cached("AAPL")
         check("restored bars survive", [b["d"] for b in got], [b["d"] for b in hist])
         check("restored opens survive", got[0]["o"], 10.0)
         check("restore itself does not re-append", len(bd._BUNDLE_UPDATES), 0)

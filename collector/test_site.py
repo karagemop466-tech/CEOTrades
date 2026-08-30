@@ -172,8 +172,9 @@ def main() -> int:
             check("shares = stake / entry_px",
                   abs(sh - o["stake"] / o["entry_px"]) < 1e-3)
             if o.get("last_px") is not None:
+                sh_eff = o.get("shares_after_split") or sh
                 check("mtm = shares * last_px",
-                      abs(o["mtm"] - sh * o["last_px"]) < 0.05)
+                      abs(o["mtm"] - sh_eff * o["last_px"]) < 0.05)
                 check("pnl = mtm - stake", abs(o["pnl"] - (o["mtm"] - o["stake"])) < 0.05)
                 check("roi = pnl / stake",
                       abs(o["roi"] - o["pnl"] / o["stake"]) < 1e-3)
