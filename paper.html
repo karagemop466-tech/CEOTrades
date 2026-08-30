@@ -44,6 +44,8 @@
   <select id="win"><option value="">All results</option><option value="w">Winners only</option><option value="l">Losers only</option></select>
   <button class="btn" id="csv">Export view (CSV)</button>
   <a class="btn" href="data/paper/positions.csv.gz" download>Full book (.csv.gz)</a>
+  <a class="btn" href="data/paper/winners.json" target="_blank" rel="noopener">Winners log</a>
+  <a class="btn" href="data/paper/losers.json" target="_blank" rel="noopener">Losers log</a>
 </div>
 <div class="card tight" id="tbl"></div>
 </main>
@@ -95,6 +97,7 @@ Promise.all([CT.load('data/paper/summary.json'), CT.load('data/paper/positions.j
     { key: 'price_src', label: 'Price src', render: function (r) { return '<span class="sub">' + CT.esc(r.price_src || '—') + '</span>'; } },
     { key: 'gap', label: 'Gap', num: true, render: function (r) { return '<span class="' + CT.pctCls(-CT.num(r.gap)) + '">' + CT.fmtPct(r.gap) + '</span>'; }, title: 'Our entry vs the insider price' },
     { key: 'last_px', label: 'Last', num: true, render: function (r) { return CT.fmtPx(r.last_px); } },
+    { key: 'r5_px', label: '+5 exit', num: true, render: function (r) { return r.r5_d ? CT.fmtPx(r.r5_px) + '<div class="sub">' + CT.esc(r.r5_d) + '</div>' : '—'; }, title: 'Observed close five sessions after entry; blank until that date exists' },
     { key: 'pnl', label: 'P&L', num: true, render: function (r) { return '<span class="' + CT.pctCls(r.pnl) + '">' + CT.fmtUSD(r.pnl) + '</span>'; } },
     { key: 'roi', label: 'ROI', num: true, render: function (r) { return '<strong class="' + CT.pctCls(r.roi) + '">' + CT.fmtPct(r.roi) + '</strong>'; } },
     { key: 'acc', label: 'Review', sort: false, render: function (r) {

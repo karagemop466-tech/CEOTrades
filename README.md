@@ -44,7 +44,24 @@ The **gap** column shows what following costs: our entry price versus the
 insider's average price. A positive gap means the public follower paid more.
 Every paper row also carries an entry-rule verification status, market-data
 source, SEC accession/issuer CIK and EDGAR review link so the entry date, entry
-open, latest close, P&L and ROI can be audited line by line.
+open, latest close, P&L and ROI can be audited line by line. Horizon exit
+candidates (`r1`, `r5`, `r21`, `r63`, and `r252`) include the exact observed
+session date and close; an unavailable horizon stays blank.
+
+### Performance logs and coverage
+
+Each build writes separate `data/paper/winners.json` and
+`data/paper/losers.json` logs. A winner has verified mark-to-market P&L above
+zero; a loser has verified P&L at or below zero. Positions without both a
+verified entry and a verified close remain explicitly unclassified. The logs
+include the same SEC EDGAR and market-history review links as the paper book. Each row also contains observed performance factors (entry gap, holding-session count, verified return, and data-quality review flags); these are diagnostics, not asserted causes.
+
+Every qualifying code-P common-equity purchase is attempted as one aggregated
+paper position per SEC accession and ticker. P rows that cannot support a
+non-fabricated order (derivative, missing ticker/shares/price, non-common
+security, or invalid symbol) are counted in `signal_coverage` rather than
+silently discarded. This is why paper positions can be fewer than all P rows
+without implying an order was missed.
 
 ---
 
