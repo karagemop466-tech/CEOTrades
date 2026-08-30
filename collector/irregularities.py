@@ -344,6 +344,48 @@ def scan_large_noncash(rows: list[dict]) -> list[dict]:
     return out
 
 
+def scan_paper_price_anomalies(site_data: str) -> list[dict]:
+    """Flag paper rows whose Yahoo open is not comparable to the as-filed price."""
+    path = os.path.join(site_data, "paper", "positions.json")
+    if not os.path.isfile(path):
+        return []
+    try:
+        rows = json.load(open(path, encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    out = []
+    for p in rows:
+        if p.get("status") != "open":
+            continue
+        gap = p.get("gap")
+        ipx = p.get("insider_px")
+        epx = p.get("entry_px")
+        if gap is None or ipx is None or epx is None:
+            continue
+        if abs(float(gap)) < 1.0:
+            continue
+        fake_row = {
+            "acc": p.get("acc") or "", "icik": p.get("icik") or "",
+            "fd": p.get("fd") or "", "td": p.get("td") or "",
+            "tk": p.get("tk") or "", "co": p.get("co") or "",
+            "in": p.get("insider") or "", "code": "P",
+            "sh": p.get("insider_sh"), "px": ipx, "val": p.get("insider_val"),
+            "sec": p.get("sec") or "", "der": 0,
+        }
+        out.append(base_item(
+            "Paper gap vs as-filed insider price (possible split adjustment)",
+            "High",
+            [fake_row],
+            (f"{p.get('tk')} paper entry open {epx} vs Form 4 VWAP {ipx} "
+             f"(gap {float(gap)*100:.1f}%). Yahoo bars are split-adjusted; "
+             f"Form 4 prices are as-filed. Review before using gap/ROI."),
+            "Do not treat this as the public follower paying a different cash price "
+            "on the same share class until the split history is confirmed.",
+            "Open paper position with |entry_open / insider_px - 1| >= 100%.",
+        ))
+    return out
+
+
 def dedupe(items: list[dict]) -> list[dict]:
     seen = set()
     out = []
@@ -375,6 +417,7 @@ def scan(data_dir: str = store.DATA, target_year: int | None = None,
     items.extend(scan_buyer_seller_overlap(rows))
     items.extend(scan_exercise_then_sale(rows))
     items.extend(scan_large_noncash(rows))
+    items.extend(scan_paper_price_anomalies(os.path.join(ROOT, "data")))
 
     items = dedupe(items)
     items.sort(key=lambda x: (
