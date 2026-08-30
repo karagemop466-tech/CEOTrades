@@ -302,7 +302,9 @@ def _total_budget_min() -> float:
         v = float(raw)
     except ValueError:
         v = 95.0
-    return max(5.0, min(v, 115.0))
+    # The scheduled job's timeout is 120 min; the dispatchable backfill
+    # workflow's is 345 min. The cap only guards against absurd values.
+    return max(5.0, min(v, 340.0))
 
 
 def _backfill_from(target: int) -> int:

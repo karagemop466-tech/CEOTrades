@@ -1,5 +1,5 @@
 {
- "generated": "2026-08-30 18:53 UTC",
+ "generated": "2026-08-30 19:10 UTC",
  "target_year": 2026,
  "checks_passed": 390,
  "checks_failed": 0,
@@ -44,7 +44,7 @@
     {
      "check": "mtm=shares*last_px",
      "ok": true,
-     "detail": "mtm=7350.21 want 7350.21"
+     "detail": "mtm=7350.21 want 7350.21 (shares_eff=843.8819)"
     },
     {
      "check": "pnl=mtm-stake",
@@ -162,7 +162,7 @@
     {
      "check": "mtm=shares*last_px",
      "ok": true,
-     "detail": "mtm=8782.61 want 8782.61"
+     "detail": "mtm=8782.61 want 8782.61 (shares_eff=8695.6522)"
     },
     {
      "check": "pnl=mtm-stake",
@@ -280,7 +280,7 @@
     {
      "check": "mtm=shares*last_px",
      "ok": true,
-     "detail": "mtm=6848.98 want 6848.98"
+     "detail": "mtm=6848.98 want 6848.98 (shares_eff=20408.1633)"
     },
     {
      "check": "pnl=mtm-stake",
@@ -511,7 +511,7 @@
     {
      "check": "mtm=shares*last_px",
      "ok": true,
-     "detail": "mtm=8559.32 want 8559.32"
+     "detail": "mtm=8559.32 want 8559.32 (shares_eff=8474.5763)"
     },
     {
      "check": "pnl=mtm-stake",
@@ -644,7 +644,7 @@
     {
      "check": "mtm=shares*last_px",
      "ok": true,
-     "detail": "mtm=9121.41 want 9121.41"
+     "detail": "mtm=9121.41 want 9121.41 (shares_eff=1597.4441)"
     },
     {
      "check": "pnl=mtm-stake",
@@ -777,7 +777,7 @@
     {
      "check": "mtm=shares*last_px",
      "ok": true,
-     "detail": "mtm=9017.86 want 9017.86"
+     "detail": "mtm=9017.86 want 9017.86 (shares_eff=8928.5714)"
     },
     {
      "check": "pnl=mtm-stake",
@@ -910,7 +910,7 @@
     {
      "check": "mtm=shares*last_px",
      "ok": true,
-     "detail": "mtm=8416.67 want 8416.67"
+     "detail": "mtm=8416.67 want 8416.67 (shares_eff=8333.3333)"
     },
     {
      "check": "pnl=mtm-stake",
@@ -1043,7 +1043,7 @@
     {
      "check": "mtm=shares*last_px",
      "ok": true,
-     "detail": "mtm=11964.5 want 11964.50"
+     "detail": "mtm=11964.5 want 11964.50 (shares_eff=591.716)"
     },
     {
      "check": "pnl=mtm-stake",
@@ -1212,7 +1212,7 @@
     {
      "check": "mtm=shares*last_px",
      "ok": true,
-     "detail": "mtm=33371.65 want 33371.65"
+     "detail": "mtm=33371.65 want 33371.65 (shares_eff=3831.4176)"
     },
     {
      "check": "pnl=mtm-stake",
@@ -1363,7 +1363,7 @@
     {
      "check": "mtm=shares*last_px",
      "ok": true,
-     "detail": "mtm=5952.84 want 5952.84"
+     "detail": "mtm=5952.84 want 5952.84 (shares_eff=637.3486)"
     },
     {
      "check": "pnl=mtm-stake",

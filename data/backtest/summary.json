@@ -1,5 +1,5 @@
 {
- "generated": "2026-08-30T18:44:12Z",
+ "generated": "2026-08-30T19:10:01Z",
  "asof": "2026-08-30",
  "rule": {
   "signal": "Form 4/5 code P, non-derivative common equity/ADR, shares>0 & price>0; one $10,000 position per SEC accession+ticker",
