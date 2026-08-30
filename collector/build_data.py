@@ -1014,14 +1014,15 @@ def bars_from_yahoo(raw: bytes):
     try:
         doc = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
-        return None
+        return None, None
     try:
         res = doc["chart"]["result"][0]
         ts = res.get("timestamp") or []
         q = ((res.get("indicators") or {}).get("quote") or [{}])[0]
         offset = int((res.get("meta") or {}).get("gmtoffset") or 0)
+        ev = ((res.get("events") or {}).get("splits") or {})
     except (KeyError, TypeError, IndexError):
-        return None
+        return None, None
     o_, c_ = q.get("open") or [], q.get("close") or []
     by = {}
     for i, t in enumerate(ts):
@@ -1034,7 +1035,34 @@ def bars_from_yahoo(raw: bytes):
             continue
         by[d] = {"d": d, "o": _r4(o if o is not None else c),
                  "c": _r4(c if c is not None else o)}
-    return [by[k] for k in sorted(by)] or None
+    # Yahoo chart meta carries split events (dates + ratio) so the engine can
+    # detect when a position's series crosses a split. Verified against live
+    # responses: events.splits maps a unix date -> {date, numerator,
+    # denominator, splitRatio} (e.g. 40:1 reverse split).
+    splits = []
+    for key in sorted(ev or {}, key=lambda k: str(k)):
+        s = ev[key] or {}
+        d = s.get("date")
+        if d is None:
+            try:
+                d = datetime.fromtimestamp(int(key) + offset, tz=timezone.utc).strftime("%Y-%m-%d")
+            except (TypeError, ValueError, OSError):
+                continue
+        num = fnum(s.get("numerator"))
+        den = fnum(s.get("denominator"))
+        if num and den and den != 0:
+            ratio = num / den
+        else:
+            ratio = fnum((s.get("splitRatio") or "").split(":")[0])
+            if ratio is None and (s.get("splitRatio") or "").count(":") == 1:
+                parts = s["splitRatio"].split(":")
+                a_, b_ = fnum(parts[0]), fnum(parts[1])
+                if a_ and b_ and b_ != 0:
+                    ratio = a_ / b_
+        if ratio is not None and d:
+            splits.append({"d": d, "ratio": round(float(ratio), 6),
+                           "num": num, "den": den})
+    return ([by[k] for k in sorted(by)] or None), (splits or None)
 
 
 def fetch_yahoo(tk: str):
@@ -1046,9 +1074,9 @@ def fetch_yahoo(tk: str):
     for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
         raw = http_get(f"https://{host}/v8/finance/chart/{sym}{q}")
         if raw:
-            bars = bars_from_yahoo(raw)
+            bars, splits = bars_from_yahoo(raw)
             if bars:
-                return bars, f"yahoo:{host.split('.')[0]}"
+                return (bars, splits), f"yahoo:{host.split('.')[0]}"
     return None, "yahoo"
 
 
@@ -1057,15 +1085,15 @@ def fetch_yahoo_tail(tk: str):
     series (the historical entry bars stay in cache untouched)."""
     sym = urllib.parse.quote(yahoo_symbol(tk), safe="-")
     crumb = urllib.parse.quote(_yahoo_crumb() or "", safe="")
-    q = "?interval=1d&range=3mo"
+    q = "?interval=1d&range=3mo&events=split"
     if crumb:
         q += f"&crumb={crumb}"
     for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
         raw = http_get(f"https://{host}/v8/finance/chart/{sym}{q}")
         if raw:
-            bars = bars_from_yahoo(raw)
+            bars, splits = bars_from_yahoo(raw)
             if bars:
-                return bars, f"yahoo:{host.split('.')[0]}"
+                return (bars, splits), f"yahoo:{host.split('.')[0]}"
     return None, "yahoo"
 
 
@@ -1144,12 +1172,12 @@ def cache_path(tk: str) -> str:
 def load_bars_cached(tk: str, max_age_days: int = 7):
     p = cache_path(tk)
     if not os.path.exists(p):
-        return None, None
+        return None, None, None
     try:
         with gzip.open(p, "rt", encoding="utf-8") as f:
             doc = json.load(f)
     except (OSError, json.JSONDecodeError):
-        return None, None
+        return None, None, None
     fetched = (doc.get("fetched") or "")[:10]
     stale = True
     if fetched:
@@ -1158,7 +1186,8 @@ def load_bars_cached(tk: str, max_age_days: int = 7):
             stale = age > max_age_days
         except ValueError:
             stale = True
-    return doc.get("bars") or None, ("cache-stale" if stale else doc.get("src") or "cache")
+    return (doc.get("bars") or None, ("cache-stale" if stale else doc.get("src") or "cache"),
+            doc.get("splits") or None)
 
 
 # In-run record of cache updates to append to the persistent bundle at the end
@@ -1208,19 +1237,37 @@ def _merge_tail(old, tail):
     return out
 
 
-def save_bars(tk: str, bars, src: str):
+def _merge_splits(old, new):
+    """Union of split events by date; the newest-known copy of an event wins.
+    Split knowledge accumulates across fetches, which matters when a split
+    happens AFTER a series was first cached."""
+    by: dict[str, dict] = {}
+    for ev in (old or []):
+        d = (ev or {}).get("d")
+        if d:
+            by[d] = ev
+    for ev in (new or []):
+        d = (ev or {}).get("d")
+        if d:
+            by[d] = ev
+    if not by:
+        return None
+    return [by[d] for d in sorted(by)]
+
+
+def save_bars(tk: str, bars, src: str, splits=None):
     bars = _trim_bars(bars)
     os.makedirs(PRICE_CACHE, exist_ok=True)
+    doc = {"tk": tk, "src": src, "fetched": date.today().isoformat(),
+           "bars": bars}
+    if splits:
+        doc["splits"] = splits
     buf = io.BytesIO()
     with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=6, mtime=0) as gz:
-        gz.write(json.dumps({"tk": tk, "src": src,
-                             "fetched": date.today().isoformat(), "bars": bars},
-                            separators=(",", ":")).encode("utf-8"))
+        gz.write(json.dumps(doc, separators=(",", ":")).encode("utf-8"))
     with open(cache_path(tk), "wb") as f:
         f.write(buf.getvalue())
-    _BUNDLE_UPDATES[yahoo_symbol(tk)] = {"tk": tk, "src": src,
-                                         "fetched": date.today().isoformat(),
-                                         "bars": bars}
+    _BUNDLE_UPDATES[yahoo_symbol(tk)] = doc
 
 
 def init_price_cache_from_bundle():
@@ -1244,7 +1291,8 @@ def init_price_cache_from_bundle():
                 tk = doc.get("tk") or ""
                 if not tk or not doc.get("bars"):
                     continue
-                save_bars(tk, doc["bars"], doc.get("src") or "bundle")
+                save_bars(tk, doc["bars"], doc.get("src") or "bundle",
+                          doc.get("splits"))
                 restored += 1
     except (OSError, EOFError):
         return 0
@@ -1309,27 +1357,34 @@ def _price_time_left() -> bool:
 
 
 def get_bars(tk: str, offline: bool = False):
-    bars, src = load_bars_cached(tk)
+    bars, src, splits = load_bars_cached(tk)
     if bars and (src != "cache-stale" or offline):
-        return bars, src
+        return bars, src, splits
     if offline:
-        return (bars or []), (src or "none")
+        return (bars or []), (src or "none"), splits
     if bars and _price_time_left():
         # Cached history exists but the mark is stale: refresh only the recent
         # tail (cheap) and merge it without touching the entry-bar history.
         tail, tsrc = fetch_yahoo_tail(tk)
         if tail:
-            merged = _merge_tail(bars, tail)
-            save_bars(tk, merged, tsrc)
-            return merged, tsrc
+            tbars, tsplits = tail
+            merged = _merge_tail(bars, tbars)
+            splits = _merge_splits(splits, tsplits)
+            save_bars(tk, merged, tsrc, splits)
+            return merged, tsrc, splits
     for fn in (fetch_yahoo, fetch_stooq, fetch_nasdaq):
         if not _price_time_left():
             break
         got, s = fn(tk)
         if got:
-            save_bars(tk, got, s)
-            return got, s
-    return (bars or []), (src or "none")
+            if isinstance(got, tuple):
+                got_bars, got_splits = got
+            else:
+                got_bars, got_splits = got, None
+            splits = _merge_splits(splits, got_splits)
+            save_bars(tk, got_bars, s, splits)
+            return got_bars, s, splits
+    return (bars or []), (src or "none"), splits
 
 
 # ---------------------------------------------------------------------------
@@ -1352,12 +1407,73 @@ def next_open_after(bars, fd):
     return None
 
 
-def simulate(sig, bars, asof):
+def _split_analysis(usable, entry_idx, last_idx, splits, icik):
+    """Classify how split events interact with an entry series.
+
+    Returns a dict (or None). For each split event after the entry session we
+    measure the price discontinuity across the event date:
+      * jump ~ 1        -> the series is split-adjusted on both sides (returns
+                           computed from the series stay valid);
+      * jump ~ ratio    -> the pre-split side is unadjusted while later bars
+                           are post-split (mixed series): P&L must be
+                           recomputed on split-adjusted shares;
+      * anything else   -> indeterminate; flag for manual review.
+    """
+    if not splits:
+        return None
+    events = []
+    for ev in splits:
+        d, ratio = ev.get("d"), ev.get("ratio")
+        if not d or not ratio or ratio <= 0:
+            continue
+        j = next((k for k in range(len(usable)) if usable[k]["d"] >= d), None)
+        if j is None or j == 0:
+            continue
+        before, after = usable[j - 1], usable[j]
+        if not (before.get("c") and after.get("o")):
+            continue
+        jump = float(after["o"]) / float(before["c"])
+        events.append({"d": d, "ratio": round(float(ratio), 6),
+                       "jump": round(jump, 4),
+                       "review_8k": (f"https://www.sec.gov/cgi-bin/browse-edgar"
+                                     f"?action=getcompany&CIK={icik or ''}&"
+                                     f"type=8-K&dateb=&owner=include&count=40")})
+    if not events:
+        return None
+    entry_d = usable[entry_idx]["d"]
+    last_d = usable[last_idx]["d"]
+    relevant = [e for e in events if e["d"] > entry_d]
+    if not relevant:
+        return None
+    after_mark = [e for e in relevant if e["d"] > last_d]
+    between = [e for e in relevant if e["d"] <= last_d]
+    kinds = []
+    for e in between:
+        j, r = e["jump"], e["ratio"]
+        if 0.5 <= j <= 2.0:
+            kinds.append(("adjusted", e))
+        elif 0.5 * r <= j <= 2.0 * r:
+            kinds.append(("mixed", e))
+        else:
+            kinds.append(("indeterminate", e))
+    if kinds and all(k == "indeterminate" for k, _ in kinds):
+        status = "split_event_review"
+    elif any(k == "mixed" for k, _ in kinds):
+        status = "mixed_pre_post_split"
+    else:
+        status = "split_adjusted_series"
+    return {"status": status, "events": relevant, "after_mark": after_mark,
+            "between": between, "kinds": kinds}
+
+
+def simulate(sig, bars, asof, splits=None):
     ysym = yahoo_symbol(sig.get("tk") or "")
     out = dict(sig)
     out.update({"stake": STAKE, "status": "no_price", "entry_d": None,
                 "entry_px": None, "shares": None, "last_d": None, "last_px": None,
                 "mtm": None, "pnl": None, "roi": None, "gap": None,
+                "split_flag": False, "split_events": None, "roi_status": None,
+                "shares_after_split": None, "roi_corrected": None,
                 "performance_factors": [],
                 "r1": None, "r5": None, "r21": None, "r63": None, "r252": None,
                 "delay_fd_entry": None, "hold": None,
@@ -1446,6 +1562,52 @@ def simulate(sig, bars, asof):
             out[key + "_d"] = usable[j]["d"]
             out[key + "_px"] = r4(float(usable[j]["c"]))
 
+    # ---- split events crossing the holding period ----
+    if splits:
+        sa = _split_analysis(usable, i, len(usable) - 1, splits, sig.get("icik"))
+        if sa:
+            out["split_flag"] = True
+            out["split_events"] = sa["events"]
+            out["roi_status"] = sa["status"]
+            # The insider's as-filed price and an adjusted series are not
+            # comparable: a gap of +3353% is an adjustment artifact, never a
+            # trading insight.
+            out["gap"] = None
+            if sa["status"] == "mixed_pre_post_split":
+                ratio_product = 1.0
+                for kind, e in sa["kinds"]:
+                    if kind == "mixed":
+                        ratio_product *= e["ratio"]
+                adj_sh = sh / ratio_product
+                if lpx and lpx > 0:
+                    mtm = adj_sh * float(lpx)
+                    out["shares_after_split"] = r4(adj_sh)
+                    out["roi_corrected"] = r4(mtm / STAKE - 1.0)
+                    out["mtm"] = r2(mtm)
+                    out["pnl"] = r2(mtm - STAKE)
+                    out["roi"] = r4(mtm / STAKE - 1.0)
+                # Horizon exits that cross the split mix share classes.
+                for key in ("r1", "r5", "r21", "r63", "r252"):
+                    d = out.get(key + "_d")
+                    if d and any(kind == "mixed" and d >= e["d"]
+                                 for kind, e in sa["kinds"]):
+                        out[key] = None
+                        out[key + "_d"] = None
+                        out[key + "_px"] = None
+                out["entry_check"] += (" Split event(s) after entry: entry and mark span "
+                                       "different share classes; P&L/ROI recomputed on "
+                                       "split-adjusted shares. Review the issuer's Item "
+                                       "3.03 8-K for the official ratio.")
+            elif sa["status"] == "split_adjusted_series":
+                out["entry_check"] += (" Split event(s) after entry: the price series is "
+                                       "split-adjusted on both sides, so absolute prices "
+                                       "are adjusted; P&L/ROI reflect the adjusted-series "
+                                       "return. Review the issuer's Item 3.03 8-K.")
+            else:  # split_event_review
+                out["entry_check"] += (" Split event(s) after entry with an indeterminate "
+                                       "price discontinuity: ROI excluded from headline "
+                                       "statistics pending manual review of the issuer's 8-K.")
+
     # These are observed diagnostics, not causal claims. They let the analysis
     # page explain which measurable conditions coincided with a positive or
     # negative result without inventing news, fundamentals, or intent.
@@ -1456,6 +1618,11 @@ def simulate(sig, bars, asof):
         if abs(out["gap"]) >= 0.30:
             factors.append({"factor": "large_entry_gap_review", "value": out["gap"],
                             "interpretation": "review for split/adjustment or filing-price mismatch; not a confirmed cause"})
+    if out.get("split_flag"):
+        factors.append({"factor": "split_event_during_hold", "value": out["roi_status"],
+                        "interpretation": "a share-class change (split/reverse split) fell "
+                                          "inside the holding period; see split_events for "
+                                          "dates, ratios and the SEC 8-K review link"})
     if out.get("hold") is not None:
         factors.append({"factor": "observed_holding_sessions", "value": out["hold"],
                         "interpretation": "calendar-free count of available market sessions since entry"})
@@ -1523,14 +1690,20 @@ def role_bucket(rel, title):
 
 def analyze(positions):
     opens = [p for p in positions if p["status"] == "open" and p.get("roi") is not None]
+    # Split-flagged positions are excluded from every headline statistic:
+    # their raw series ROI can mix pre-split entries with post-split marks
+    # (a +517% artifact is not a tradable result). They are counted and
+    # reported separately instead of silently folding into the aggregates.
+    clean_opens = [p for p in opens if not p.get("split_flag")]
+    split_opens = [p for p in opens if p.get("split_flag")]
     by_role, by_size, by_year = defaultdict(list), defaultdict(list), defaultdict(list)
-    for p in opens:
+    for p in clean_opens:
         by_role[role_bucket(p.get("rel"), p.get("title"))].append(p["roi"])
         by_size[size_bucket(p.get("insider_val") or 0)].append(p["roi"])
         by_year[(p.get("fd") or "")[:4]].append(p["roi"])
 
-    deployed = sum(p["stake"] for p in opens)
-    value = sum(p["mtm"] for p in opens if p.get("mtm") is not None)
+    deployed = sum(p["stake"] for p in clean_opens)
+    value = sum(p["mtm"] for p in clean_opens if p.get("mtm") is not None)
     price_sources = defaultdict(int)
     entry_rule_failures = 0
     arithmetic_failures = 0
@@ -1542,8 +1715,9 @@ def analyze(positions):
             if p.get("shares") is not None and p.get("entry_px") is not None:
                 if abs((p["shares"] * p["entry_px"]) - p.get("stake", STAKE)) > 0.25:
                     arithmetic_failures += 1
-            if p.get("mtm") is not None and p.get("shares") is not None and p.get("last_px") is not None:
-                if abs(p["mtm"] - p["shares"] * p["last_px"]) > 0.25:
+            sh_eff = p.get("shares_after_split") or p.get("shares")
+            if p.get("mtm") is not None and sh_eff is not None and p.get("last_px") is not None:
+                if abs(p["mtm"] - sh_eff * p["last_px"]) > 0.25:
                     arithmetic_failures += 1
 
     def tbl(d, key):
@@ -1551,10 +1725,11 @@ def analyze(positions):
         rows.sort(key=lambda x: -x["n"])
         return rows
 
-    ranked = sorted(opens, key=lambda p: p["roi"], reverse=True)
+    ranked = sorted(clean_opens, key=lambda p: p["roi"], reverse=True)
     keep = ("id", "tk", "co", "insider", "rel", "title", "fd", "td", "entry_d",
             "entry_px", "entry_rule_status", "price_src", "insider_px", "insider_sh",
             "insider_val", "shares", "last_px", "roi", "pnl", "mtm", "gap",
+            "roi_status", "split_events", "shares_after_split",
             "acc", "icik", "edgar_url")
 
     def slim(p):
@@ -1565,6 +1740,8 @@ def analyze(positions):
         "counts": {
             "signals": len(positions),
             "open": len(opens),
+            "open_clean": len(clean_opens),
+            "open_split_flagged": len(split_opens),
             "awaiting_entry": sum(1 for p in positions if p["status"] == "awaiting_entry"),
             "no_price": sum(1 for p in positions if p["status"] == "no_price"),
             "entry_window_missing": sum(1 for p in positions
@@ -1586,9 +1763,20 @@ def analyze(positions):
             "line_by_line_review": "Each paper row carries SEC accession/issuer CIK, EDGAR filing URL, entry rule status, price source, entry date, entry open, latest close, ROI and arithmetic fields.",
             "portfolio_warning": "Reported holdings use SEC post-transaction ownership fields only; no outside brokerage accounts or unfiled trades are inferred.",
         },
-        "roi": stats([p["roi"] for p in opens]),
-        "gap": stats([p["gap"] for p in opens if p.get("gap") is not None]),
-        "horizons": {h: stats([p.get(h) for p in opens]) for h in
+        "split": {
+            "excluded_from_headline_roi": len(split_opens),
+            "by_status": {s: sum(1 for p in split_opens if p.get("roi_status") == s)
+                          for s in ("mixed_pre_post_split", "split_adjusted_series",
+                                    "split_event_review")},
+            "note": ("Positions whose series crosses a split/reverse split are excluded "
+                     "from headline ROI/win-rate statistics. Mixed-series positions carry "
+                     "a split-adjusted ROI (roi_corrected); adjusted-series positions keep "
+                     "their series ROI; indeterminate ones stay flagged for manual review. "
+                     "Every row links the issuer's SEC 8-K search for the official ratio."),
+        },
+        "roi": stats([p["roi"] for p in clean_opens]),
+        "gap": stats([p["gap"] for p in clean_opens if p.get("gap") is not None]),
+        "horizons": {h: stats([p.get(h) for p in clean_opens]) for h in
                      ("r1", "r5", "r21", "r63", "r252")},
         "by_role": tbl(by_role, "role"),
         "by_size": tbl(by_size, "size"),
@@ -1609,11 +1797,15 @@ def analyze(positions):
             "lookahead": "none — no price at or before the filing date is used as a fill",
             "costs": "no commission, slippage or spread modelled",
             "prices": "Yahoo Finance daily bars, Stooq fallback",
-            "splits": "split-adjusted series; insider prices are as-filed",
+            "splits": ("split events are detected from the Yahoo chart metadata; positions "
+                       "whose series crosses a split are flagged, excluded from headline "
+                       "statistics, and — when the series mixes pre/post-split bars — their "
+                       "P&L/ROI is recomputed on split-adjusted shares; insider prices stay "
+                       "as-filed"),
         },
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
-    out["findings"] = findings(out, opens)
+    out["findings"] = findings(out, clean_opens)
     return out
 
 
@@ -1659,6 +1851,12 @@ def findings(a, opens):
             f"insider's own fill: by the time a Form 4 is public, the entry open is "
             f"{'higher' if (g['median'] or 0) > 0 else 'lower'} than what the insider paid "
             f"in the typical case.")
+    if a["counts"].get("open_split_flagged", 0):
+        f.append(
+            f"{a['counts']['open_split_flagged']:,} open position(s) crossed a split or "
+            f"reverse split during the holding period and are excluded from the headline "
+            f"statistics above; see the 'split' block and each row's split_events for "
+            f"ratios and SEC 8-K review links.")
     hz = [(h, a["horizons"][h]) for h in ("r1", "r5", "r21", "r63", "r252")
           if a["horizons"][h]["n"] >= 30]
     if hz:
@@ -1715,7 +1913,8 @@ def write_paper(positions, out_dir, coverage: dict | None = None):
     # table. A position is only classified when a verified mark exists; an
     # awaiting/no-price row is never guessed into either bucket. The embedded
     # SEC and market-data links make every line manually reviewable.
-    realized = [p for p in positions if p.get("status") == "open" and p.get("pnl") is not None]
+    realized = [p for p in positions if p.get("status") == "open" and p.get("pnl") is not None
+                and p.get("roi_status") != "split_event_review"]
     winners = [p for p in realized if p.get("pnl", 0) > 0]
     losers = [p for p in realized if p.get("pnl", 0) <= 0]
     def outcome_log(label, rows):
@@ -1737,6 +1936,10 @@ def write_paper(positions, out_dir, coverage: dict | None = None):
     jdump(outcome_log("losers", losers), os.path.join(pdir, "losers.json"))
     a["outcomes"] = {"realized": len(realized), "winners": len(winners), "losers": len(losers),
                       "unclassified": len(positions) - len(realized),
+                      "split_flagged": sum(1 for p in positions if p.get("split_flag")),
+                      "split_rule": ("mixed-series split positions are classified by their "
+                                     "split-adjusted P&L; adjusted-series positions by their "
+                                     "series P&L; split_event_review positions stay unclassified"),
                       "winner_log": "data/paper/winners.json", "loser_log": "data/paper/losers.json"}
     # Rewrite summary after adding the auditable outcome index.
     jdump(a, os.path.join(pdir, "summary.json"))
@@ -1746,7 +1949,8 @@ def write_paper(positions, out_dir, coverage: dict | None = None):
     cols = ["id", "status", "entry_rule_status", "fd", "td", "entry_d", "tk", "co",
             "insider", "rel", "title", "sec", "lots", "insider_sh", "insider_px",
             "insider_val", "entry_px", "gap", "shares", "stake", "last_d", "last_px",
-            "mtm", "pnl", "roi",
+            "mtm", "pnl", "roi", "roi_corrected", "roi_status", "split_flag",
+            "split_events", "shares_after_split",
             "r1", "r1_d", "r1_px", "r5", "r5_d", "r5_px", "r21", "r21_d", "r21_px",
             "r63", "r63_d", "r63_px", "r252", "r252_d", "r252_px",
             "delay_td_fd",
@@ -1895,9 +2099,9 @@ def main() -> int:
             log(f"  price cache restored from bundle: {n_restored:,} tickers")
     for i, tk in enumerate(tickers, 1):
         if price_deadline is not None and time.monotonic() > price_deadline:
-            bars, src = [], "price_budget_exhausted"
+            bars, src, splits = [], "price_budget_exhausted", None
         else:
-            bars, src = get_bars(tk, offline=args.offline)
+            bars, src, splits = get_bars(tk, offline=args.offline)
         priced_tickers.add(tk)
         mark = latest_mark(bars, asof)
         if mark:
@@ -1910,7 +2114,7 @@ def main() -> int:
         else:
             nosrc += 1
         for s in by_tk.get(tk, []):
-            p = simulate(s, bars, asof)
+            p = simulate(s, bars, asof, splits=splits)
             p["price_src"] = src
             positions.append(p)
         if i % 100 == 0 or i == len(tickers):

@@ -137,9 +137,10 @@ def verify_positions(vids: list[dict]):
                 chk("shares=10000/entry_px", near(p.get("shares"), sh, 0.01),
                     f"shares={p.get('shares')} want {sh:.4f}")
             if p.get("last_px") is not None and p.get("shares") is not None:
-                mtm = float(p["shares"]) * float(p["last_px"])
+                sh_eff = p.get("shares_after_split") or p.get("shares")
+                mtm = float(sh_eff) * float(p["last_px"])
                 chk("mtm=shares*last_px", near(p.get("mtm"), mtm, 0.05),
-                    f"mtm={p.get('mtm')} want {mtm:.2f}")
+                    f"mtm={p.get('mtm')} want {mtm:.2f} (shares_eff={sh_eff})")
                 if p.get("mtm") is not None:
                     chk("pnl=mtm-stake", near(p.get("pnl"), float(p["mtm"]) - 10000.0, 0.05))
                     chk("roi=mtm/stake-1", near(p.get("roi"), float(p["mtm"]) / 10000.0 - 1, 1e-4))
@@ -147,7 +148,25 @@ def verify_positions(vids: list[dict]):
                 ipx = float(p["insider_px"])
                 chk("insider_px=val/sh", near(ipx, (p.get("insider_val") or 0) / (p.get("insider_sh") or 1), max(0.01, ipx * 1e-4)))
                 if p.get("entry_px"):
-                    chk("gap=entry/insider-1", near(p.get("gap"), float(p["entry_px"]) / ipx - 1, 1e-4))
+                    if p.get("split_flag"):
+                        # as-filed insider price vs possibly split-adjusted series:
+                        # gap must be blank rather than a meaningless +3000%.
+                        chk("gap_blank_on_split_flagged", p.get("gap") is None,
+                            f"gap={p.get('gap')}")
+                    else:
+                        chk("gap=entry/insider-1", near(p.get("gap"), float(p["entry_px"]) / ipx - 1, 1e-4))
+            if p.get("split_flag"):
+                chk("split_flagged_has_status",
+                    p.get("roi_status") in ("mixed_pre_post_split",
+                                            "split_adjusted_series",
+                                            "split_event_review"),
+                    f"roi_status={p.get('roi_status')}")
+                if p.get("roi_status") == "mixed_pre_post_split":
+                    chk("mixed_has_split_events", bool(p.get("split_events")))
+                    chk("mixed_has_shares_after_split", p.get("shares_after_split") is not None,
+                        f"shares_after_split={p.get('shares_after_split')}")
+                    chk("mixed_roi_corrected_equals_roi",
+                        near(p.get("roi_corrected"), p.get("roi"), 1e-4))
             url = edgar_url(p.get("acc"), p.get("icik"))
             chk("edgar_url_wellformed",
                 edgar_url_ok(p.get("edgar_url"), p.get("acc"), p.get("icik")),
@@ -172,6 +191,10 @@ def verify_positions(vids: list[dict]):
                                                   "2026-12-31"),
             "price_src": p.get("price_src"),
         }
+        if p.get("split_events"):
+            row["review"]["split_8k_review"] = (p["split_events"][0] or {}).get("review_8k")
+            row["review"]["split_events"] = [
+                {k: e.get(k) for k in ("d", "ratio", "jump")} for e in p["split_events"]]
         out.append(row)
     return out
 
