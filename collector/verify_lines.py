@@ -209,7 +209,12 @@ def verify_activity():
 
 
 def sample_trade_rows(year: str | None, per_month: int = 2, stride: int = 37):
-    """Deterministic trade-row sample with SEC URLs for manual review."""
+    """Deterministic trade-row sample with SEC URLs for manual review.
+
+    Streams each year CSV (never materialised: files run to millions of rows):
+    per calendar month the largest reported-value rows are kept via a bounded
+    top-list, plus a fixed-stride systematic sample of every month's tape.
+    """
     cdir = os.path.join(SITE, "csv")
     out = []
     files = []
@@ -218,28 +223,51 @@ def sample_trade_rows(year: str | None, per_month: int = 2, stride: int = 37):
         if year:
             files = [fn for fn in files if year in fn]
     for fn in files:
+        top: dict[str, list[tuple[float, dict]]] = {}
+        stride_picks: dict[str, list[dict]] = {}
+        counts: dict[str, int] = {}
         with gzip.open(os.path.join(cdir, fn), "rt", encoding="utf-8", newline="") as f:
-            rows = list(csv.DictReader(f))
-        if not rows:
-            continue
-        by_month: dict[str, list[dict]] = {}
-        for r in rows:
-            by_month.setdefault((r.get("fd") or "")[:7], []).append(r)
-        for m, rs in sorted(by_month.items()):
-            rs.sort(key=lambda r: (float(r.get("val") or 0) if r.get("val") else 0), reverse=True)
-            picked = rs[:per_month]
-            step = max(1, len(rs) // 25)
-            picked += rs[::step][:3]
-            for r in picked:
-                out.append({
-                    "fd": r.get("fd"), "td": r.get("td"), "co": r.get("co"), "tk": r.get("tk"),
-                    "insider": r.get("in"), "rel": r.get("rel"), "code": r.get("code"),
-                    "side": r.get("side"), "sh": r.get("sh"), "px": r.get("px"),
-                    "val": r.get("val"), "af": r.get("af"), "acc": r.get("acc"),
-                    "sec_filing": edgar_url(r.get("acc"), r.get("icik")),
-                    "verify": "shares×price=val; code/side per SEC Table I; held-after=af",
-                })
+            for r in csv.DictReader(f):
+                m = (r.get("fd") or "")[:7]
+                if not m:
+                    continue
+                try:
+                    v = float(r.get("val") or 0)
+                except ValueError:
+                    v = 0.0
+                bucket = top.setdefault(m, [])
+                bucket.append((v, r))
+                if len(bucket) > per_month * 4:
+                    bucket.sort(key=lambda t: t[0], reverse=True)
+                    del bucket[per_month:]
+                n = counts.get(m, 0) + 1
+                counts[m] = n
+                if n % stride == 1:
+                    stride_picks.setdefault(m, []).append(r)
+        for m in sorted(top):
+            emit = []
+            ranked = [r for _, r in sorted(top[m], key=lambda t: -t[0])]
+            for r in ranked[:per_month]:
+                emit.append(r)
+            for r in stride_picks.get(m, []):
+                if len(emit) >= per_month + 3:
+                    break
+                if not any(r is e or r == e for e in emit):
+                    emit.append(r)
+            for r in emit:
+                out.append(_sample_row(r))
     return out
+
+
+def _sample_row(r: dict) -> dict:
+    return {
+        "fd": r.get("fd"), "td": r.get("td"), "co": r.get("co"), "tk": r.get("tk"),
+        "insider": r.get("in"), "rel": r.get("rel"), "code": r.get("code"),
+        "side": r.get("side"), "sh": r.get("sh"), "px": r.get("px"),
+        "val": r.get("val"), "af": r.get("af"), "acc": r.get("acc"),
+        "sec_filing": edgar_url(r.get("acc"), r.get("icik")),
+        "verify": "shares×price=val; code/side per SEC Table I; held-after=af",
+    }
 
 
 def main() -> int:
