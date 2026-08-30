@@ -54,7 +54,7 @@ Each build writes separate `data/paper/winners.json` and
 `data/paper/losers.json` logs. A winner has verified mark-to-market P&L above
 zero; a loser has verified P&L at or below zero. Positions without both a
 verified entry and a verified close remain explicitly unclassified. The logs
-include the same SEC EDGAR and market-history review links as the paper book.
+include the same SEC EDGAR and market-history review links as the paper book. Each row also contains observed performance factors (entry gap, holding-session count, verified return, and data-quality review flags); these are diagnostics, not asserted causes.
 
 Every qualifying code-P common-equity purchase is attempted as one aggregated
 paper position per SEC accession and ticker. P rows that cannot support a

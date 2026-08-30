@@ -161,7 +161,7 @@ def main() -> int:
     if pos:
         need = {"fd", "entry_d", "tk", "co", "insider", "insider_val", "insider_px",
                 "entry_px", "gap", "last_px", "pnl", "roi", "acc", "status", "icik",
-                "entry_rule_status", "entry_check", "price_src", "edgar_url"}
+                "entry_rule_status", "entry_check", "price_src", "edgar_url", "performance_factors"}
         missing = need - set(pos[0])
         check("position rows expose every column the UI renders", not missing, str(missing))
         opens = [x for x in pos if x["status"] == "open"]

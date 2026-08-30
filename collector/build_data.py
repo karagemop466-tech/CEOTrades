@@ -1343,6 +1343,7 @@ def simulate(sig, bars, asof):
     out.update({"stake": STAKE, "status": "no_price", "entry_d": None,
                 "entry_px": None, "shares": None, "last_d": None, "last_px": None,
                 "mtm": None, "pnl": None, "roi": None, "gap": None,
+                "performance_factors": [],
                 "r1": None, "r5": None, "r21": None, "r63": None, "r252": None,
                 "delay_fd_entry": None, "hold": None,
                 "entry_rule": "first_regular_session_open_strictly_after_sec_filing_date",
@@ -1429,6 +1430,27 @@ def simulate(sig, bars, asof):
             # close a follower would have received, auditable line by line.
             out[key + "_d"] = usable[j]["d"]
             out[key + "_px"] = r4(float(usable[j]["c"]))
+
+    # These are observed diagnostics, not causal claims. They let the analysis
+    # page explain which measurable conditions coincided with a positive or
+    # negative result without inventing news, fundamentals, or intent.
+    factors = []
+    if out.get("gap") is not None:
+        factors.append({"factor": "entry_gap_vs_insider", "value": out["gap"],
+                        "interpretation": "positive means the follower paid more than the insider's reported average price"})
+        if abs(out["gap"]) >= 0.30:
+            factors.append({"factor": "large_entry_gap_review", "value": out["gap"],
+                            "interpretation": "review for split/adjustment or filing-price mismatch; not a confirmed cause"})
+    if out.get("hold") is not None:
+        factors.append({"factor": "observed_holding_sessions", "value": out["hold"],
+                        "interpretation": "calendar-free count of available market sessions since entry"})
+    if out.get("roi") is not None:
+        factors.append({"factor": "entry_to_last_close_return", "value": out["roi"],
+                        "interpretation": "verified price return from entry open to latest close"})
+    if not out.get("r252_d"):
+        factors.append({"factor": "long_horizon_not_available", "value": None,
+                        "interpretation": "one-year exit is not classified until 252 observed sessions exist"})
+    out["performance_factors"] = factors
     return out
 
 
@@ -1709,7 +1731,7 @@ def write_paper(positions, out_dir, coverage: dict | None = None):
             "r1", "r1_d", "r1_px", "r5", "r5_d", "r5_px", "r21", "r21_d", "r21_px",
             "r63", "r63_d", "r63_px", "r252", "r252_d", "r252_px",
             "delay_td_fd",
-            "delay_fd_entry", "hold", "price_src", "entry_check", "edgar_url",
+            "delay_fd_entry", "hold", "price_src", "entry_check", "performance_factors", "edgar_url",
             "yahoo_history_url", "stooq_url", "acc",
             "form", "amend", "icik", "pcik"]
     jdump([{k: p.get(k) for k in cols} for p in ordered[:PAPER_BROWSE_CAP]],
