@@ -1,0 +1,22 @@
+Pass 1: streaming trade store …
+  filtering to SEC filing years >= 2025
+  66 rows | 32 filings | 21 companies | 28 insiders
+  filing dates 2026-03-06 .. 2026-08-27
+Pass 2: pricing insider-buy signals …
+  15 qualifying buy signals (0 below $1,000, 0 invalid ticker; 0 P-rows had no ticker at all)
+  19 unique tickers to price (10 paper, 19 with reported holdings)
+  priced 19/19 tickers (8 with bars, 11 without)
+Pass 3: writing site data …
+  price bundle updated with 8 ticker(s) (cumulative coverage for the next run)
+  companies.json: 21 rows (20 detail buckets)
+  insiders.json:  28 insiders aggregated
+  activity:       28 insider/company pair(s), 0 with both buys and sells
+  portfolios:     28 insider(s) with reported holdings across 0 multi-issuer
+  recent.json:    57 rows
+  csv/:           66 rows across 1 years
+  audit:          incomplete_or_unproven | 4 row issues
+  irregularities: 10 automated review flag(s)
+  paper:          11 open positions, ROI 0.0085
+Done. 66 transactions published.
+
+Line-by-line verification …
