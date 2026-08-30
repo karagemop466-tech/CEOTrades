@@ -51,13 +51,15 @@ import store  # noqa: E402
 
 
 def _target_year() -> int:
-    raw = os.environ.get("CEOTRADES_TARGET_YEAR", "2025").strip()
+    # Default is the current UTC calendar year so nightly collection keeps
+    # placing paper trades on new Form-4 buys instead of rebuilding a stale year.
+    raw = os.environ.get("CEOTRADES_TARGET_YEAR", str(date.today().year)).strip()
     if raw in ("", "0", "all", "ALL"):
         return 0
     try:
         return int(raw)
     except ValueError:
-        return 2025
+        return date.today().year
 
 
 def log(m):

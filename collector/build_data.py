@@ -867,28 +867,67 @@ class _Throttle:
 MKT_THROTTLE = _Throttle(4.0)
 
 
-def http_get(url: str, retries: int = 2, timeout: int = 45) -> bytes | None:
+_YAHOO_COOKIE = ""
+_YAHOO_CRUMB = ""
+
+
+def http_get(url: str, retries: int = 3, timeout: int = 45, extra_headers=None) -> bytes | None:
+    global _YAHOO_COOKIE
     for attempt in range(retries + 1):
         MKT_THROTTLE.wait()
-        req = urllib.request.Request(url, headers={
+        headers = {
             "User-Agent": UA_MKT,
             "Accept": "application/json,text/csv,*/*",
             "Accept-Language": "en-US,en;q=0.9",
-        })
+            "Accept-Encoding": "gzip, deflate",
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        if _YAHOO_COOKIE:
+            headers["Cookie"] = _YAHOO_COOKIE
+        req = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 raw = r.read()
-                if r.headers.get("Content-Encoding") == "gzip":
-                    raw = gzip.decompress(raw)
+                enc = (r.headers.get("Content-Encoding") or "").lower()
+                if enc == "gzip" or raw[:2] == b"\x1f\x8b":
+                    try:
+                        raw = gzip.decompress(raw)
+                    except OSError:
+                        pass
+                set_cookie = r.headers.get("Set-Cookie") or ""
+                if "yahoo.com" in url and set_cookie:
+                    # Keep A1/A3 session cookies used by the chart API crumb.
+                    bits = [c.split(";")[0] for c in set_cookie.split(",") if "=" in c.split(";")[0]]
+                    if bits:
+                        _YAHOO_COOKIE = "; ".join(bits)
                 return raw
         except urllib.error.HTTPError as e:
-            if e.code in (404, 401, 403):
+            if e.code in (404,):
+                return None
+            if e.code in (401, 403, 429, 503) and attempt < retries:
+                time.sleep(2.0 * (attempt + 1))
+                continue
+            if e.code in (401, 403):
                 return None
         except Exception:  # noqa: BLE001
             pass
         if attempt < retries:
             time.sleep(1.5 * (attempt + 1))
     return None
+
+
+def _yahoo_crumb() -> str:
+    global _YAHOO_CRUMB
+    if _YAHOO_CRUMB:
+        return _YAHOO_CRUMB
+    http_get("https://fc.yahoo.com")
+    raw = http_get("https://query1.finance.yahoo.com/v1/test/getcrumb")
+    if raw:
+        crumb = raw.decode("utf-8", "replace").strip()
+        if crumb and "<" not in crumb and len(crumb) < 80:
+            _YAHOO_CRUMB = crumb
+    return _YAHOO_CRUMB
 
 
 def yahoo_symbol(tk: str) -> str:
@@ -943,9 +982,12 @@ def bars_from_yahoo(raw: bytes):
 
 def fetch_yahoo(tk: str):
     sym = urllib.parse.quote(yahoo_symbol(tk), safe="-")
+    crumb = urllib.parse.quote(_yahoo_crumb() or "", safe="")
+    q = "?interval=1d&range=5y&events=split"
+    if crumb:
+        q += f"&crumb={crumb}"
     for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
-        raw = http_get(f"https://{host}/v8/finance/chart/{sym}"
-                       f"?interval=1d&range=5y&events=split")
+        raw = http_get(f"https://{host}/v8/finance/chart/{sym}{q}")
         if raw:
             bars = bars_from_yahoo(raw)
             if bars:
@@ -984,6 +1026,41 @@ def fetch_stooq(tk: str):
         bars.append({"d": d, "o": _r4(o), "c": _r4(c)})
     bars.sort(key=lambda b: b["d"])
     return (bars or None), "stooq"
+
+
+def fetch_nasdaq(tk: str):
+    """Nasdaq historical quotes as a third fallback."""
+    sym = urllib.parse.quote(yahoo_symbol(tk))
+    today = date.today()
+    url = (f"https://api.nasdaq.com/api/quote/{sym}/historical"
+           f"?assetclass=stocks&fromdate={(today - timedelta(days=1300)).isoformat()}"
+           f"&todate={today.isoformat()}&limit=9999")
+    raw = http_get(url, extra_headers={"Origin": "https://www.nasdaq.com",
+                                       "Referer": "https://www.nasdaq.com/"})
+    if not raw:
+        return None, "nasdaq"
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+        rows = (((doc or {}).get("data") or {}).get("tradesTable") or {}).get("rows") or []
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError):
+        return None, "nasdaq"
+    by = {}
+    for r in rows:
+        ds = (r.get("date") or "").strip()
+        try:
+            d = datetime.strptime(ds, "%m/%d/%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+
+        def money(x):
+            return _r4(str(x or "").replace("$", "").replace(",", "").replace("—", "").replace("--", ""))
+
+        o, c = money(r.get("open")), money(r.get("close"))
+        if o is None and c is None:
+            continue
+        by[d] = {"d": d, "o": o if o is not None else c, "c": c if c is not None else o}
+    bars = [by[k] for k in sorted(by)]
+    return (bars or None), "nasdaq"
 
 
 def cache_path(tk: str) -> str:
@@ -1027,7 +1104,7 @@ def get_bars(tk: str, offline: bool = False):
         return bars, src
     if offline:
         return (bars or []), (src or "none")
-    for fn in (fetch_yahoo, fetch_stooq):
+    for fn in (fetch_yahoo, fetch_stooq, fetch_nasdaq):
         got, s = fn(tk)
         if got:
             save_bars(tk, got, s)
@@ -1056,6 +1133,7 @@ def next_open_after(bars, fd):
 
 
 def simulate(sig, bars, asof):
+    ysym = yahoo_symbol(sig.get("tk") or "")
     out = dict(sig)
     out.update({"stake": STAKE, "status": "no_price", "entry_d": None,
                 "entry_px": None, "shares": None, "last_d": None, "last_px": None,
@@ -1065,7 +1143,11 @@ def simulate(sig, bars, asof):
                 "entry_rule": "first_regular_session_open_strictly_after_sec_filing_date",
                 "entry_rule_status": "no_price",
                 "entry_check": "No daily market bars available; no entry price was inferred.",
-                "edgar_url": edgar_url(sig.get("acc"), sig.get("icik"))})
+                "edgar_url": edgar_url(sig.get("acc"), sig.get("icik")),
+                "yahoo_history_url": (f"https://finance.yahoo.com/quote/{ysym}/history"
+                                      if ysym else ""),
+                "stooq_url": (f"https://stooq.com/q/d/?s={ysym.lower()}.us"
+                              if ysym else "")})
     if sig.get("td") and sig.get("fd"):
         try:
             out["delay_td_fd"] = (date.fromisoformat(sig["fd"])
@@ -1387,7 +1469,8 @@ def write_paper(positions, out_dir):
             "insider", "rel", "title", "sec", "lots", "insider_sh", "insider_px",
             "insider_val", "entry_px", "gap", "shares", "stake", "last_d", "last_px",
             "mtm", "pnl", "roi", "r1", "r5", "r21", "r63", "r252", "delay_td_fd",
-            "delay_fd_entry", "hold", "price_src", "entry_check", "edgar_url", "acc",
+            "delay_fd_entry", "hold", "price_src", "entry_check", "edgar_url",
+            "yahoo_history_url", "stooq_url", "acc",
             "form", "amend", "icik", "pcik"]
     jdump([{k: p.get(k) for k in cols} for p in ordered[:PAPER_BROWSE_CAP]],
           os.path.join(pdir, "positions.json"))
