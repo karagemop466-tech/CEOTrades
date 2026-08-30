@@ -130,6 +130,21 @@ Promise.all([CT.load('data/summary.json'), CT.load('data/paper/summary.json').ca
       '<a href="irregularities.html">Review coverage and flags →</a>';
   }
 
+  // Staleness banner: if the newest published filing is older than 4 days the
+  // nightly pipeline is not landing data — say so instead of showing a quietly
+  // frozen site.
+  try {
+    var lastFd = new Date(s.range.to + 'T00:00:00Z');
+    var ageDays = (Date.now() - lastFd.getTime()) / 86400000;
+    if (ageDays > 4) {
+      var sn = document.getElementById('auditnote');
+      sn.style.display = 'block';
+      sn.innerHTML = '<strong>Collection stalled:</strong> the newest filing is from ' +
+        CT.esc(s.range.to) + ' (' + Math.floor(ageDays) + ' days ago). The nightly ' +
+        'collector is not completing — check the <a href="https://github.com/karagemop466-tech/CEOTrades/actions" target="_blank" rel="noopener">workflow runs</a>.';
+    }
+  } catch (e) { /* range.to absent on an empty build; nothing to warn about */ }
+
   var pk = document.getElementById('paperkpis');
   if (p && p.counts && p.counts.open) {
     pk.innerHTML =
@@ -233,7 +248,13 @@ Promise.all([CT.load('data/paper/summary.json'), CT.load('data/paper/positions.j
     { key: 'last_px', label: 'Last', num: true, render: function (r) { return CT.fmtPx(r.last_px); } },
     { key: 'pnl', label: 'P&L', num: true, render: function (r) { return '<span class="' + CT.pctCls(r.pnl) + '">' + CT.fmtUSD(r.pnl) + '</span>'; } },
     { key: 'roi', label: 'ROI', num: true, render: function (r) { return '<strong class="' + CT.pctCls(r.roi) + '">' + CT.fmtPct(r.roi) + '</strong>'; } },
-    { key: 'acc', label: 'Filing', sort: false, render: function (r) { return r.acc ? '<a href="' + CT.edgar(r.acc, r.icik) + '" target="_blank" rel="noopener">SEC ↗</a>' : ''; } }
+    { key: 'acc', label: 'Review', sort: false, render: function (r) {
+        var bits = [];
+        if (r.acc) bits.push('<a href="' + CT.edgar(r.acc, r.icik) + '" target="_blank" rel="noopener">SEC ↗</a>');
+        if (r.yahoo_history_url) bits.push('<a href="' + CT.esc(r.yahoo_history_url) + '" target="_blank" rel="noopener">Yahoo ↗</a>');
+        if (r.stooq_url) bits.push('<a href="' + CT.esc(r.stooq_url) + '" target="_blank" rel="noopener">Stooq ↗</a>');
+        return bits.join(' ');
+      } }
   ];
   var t = new CT.Table({ mount: '#tbl', rows: rows, cols: cols, pageSize: 50, sortKey: 'fd', sortDir: -1 });
 

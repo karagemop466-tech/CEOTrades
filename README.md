@@ -24,11 +24,12 @@ Every open-market insider purchase becomes one simulated position:
 | **Signal** | Form 4/5 non-derivative transaction code `P` (open-market or private purchase) of common stock or an ADR, with a reported share count and price |
 | **Size** | Fixed **$10,000** notional, fractional shares allowed |
 | **Entry** | Regular-session **open of the first trading day _strictly after_ the filing date** |
-| **Exit** | None — positions stay open; this is a forward test |
+| **Exit** | None — positions stay open; this is a forward test. Each horizon (1/5/21/63/252 sessions) is reported with its concrete **exit date and exit close** so every "possible exit" is auditable |
 | **Mark** | Latest available regular-session close |
-| **Horizons** | 1, 5, 21, 63 and 252 sessions after entry |
+| **Horizons** | 1, 5, 21, 63 and 252 sessions after entry, each with exit date + exit price |
 | **Costs** | None modelled (no commission, spread or slippage) |
-| **Prices** | Yahoo Finance daily bars, Stooq fallback |
+| **Prices** | Yahoo Finance daily bars, Stooq fallback, Nasdaq fallback |
+| **Coverage** | P-buys excluded by rule (derivative, no ticker, no share count, no reported price, non-common security, below the documented **$1,000** minimum) are counted in `paper/summary.json → signal_coverage` — never silently dropped |
 
 Two properties are enforced in code and covered by tests:
 
@@ -45,6 +46,21 @@ insider's average price. A positive gap means the public follower paid more.
 Every paper row also carries an entry-rule verification status, market-data
 source, SEC accession/issuer CIK and EDGAR review link so the entry date, entry
 open, latest close, P&L and ROI can be audited line by line.
+
+**Back-added history.** The published window is the current year plus the
+previous year (rolling): SEC quarterly archives are ingested for completed
+quarters (2025q1 → the latest published quarter) and the EDGAR daily index
+covers the current quarter day by day. Every tracked insider buy in that
+window — past and present — gets the same simulated $10,000 position with the
+same verified no-lookahead entry rule, so ROI and performance analysis runs
+over the full back-added book, not just filings seen live.
+
+**Cumulative verified prices.** Market bars persist across runs in a committed
+price bundle (`collector/data/prices-bundle.jsonl.gz`) that is restored at the
+start of every build and appended with only the tickers fetched that run.
+Coverage therefore deepens night after night; a ticker with no bars yet is
+reported `no_price` (counted, never fabricated), and mark refreshes use a
+short recent-window fetch merged without touching the stored entry-bar history.
 
 ---
 
@@ -71,25 +87,27 @@ detail (underlying security, underlying shares, conversion or exercise price,
 expiration) and filing timeliness. Missing source fields remain blank/null;
 they are not guessed.
 
-## 2025 target-year collection and audit
+## 2025+2026 collection and audit
 
-For the current-year task, run the dedicated YTD orchestrator. It uses SEC
-quarterly bulk ZIPs for completed quarters and EDGAR daily-index/XML filings for
-the current quarter:
+The default publish window is the current year plus the previous year
+(`CEOTRADES_BACKFILL_FROM`, default `target year − 1`). It uses SEC quarterly
+bulk ZIPs for completed quarters and EDGAR daily-index/XML filings for the
+current quarter:
 
 ```bash
-python3 collector/collect_ytd.py --year 2025 --replace-year
-python3 collector/build_data.py --year 2025 --audit-year 2025
+python3 collector/collect_ytd.py --year 2026
+python3 collector/build_data.py --from-year 2025 --audit-year 2026
 python3 collector/build_pages.py
 ```
 
 The collection run records `collector/data/source_manifest.json`; the build then
 emits `data/audit.json` and regenerates `INSIDER_TRADING_FORENSIC_REPORT.md`.
-If the local store plus source manifest do not prove full coverage from the
-beginning of 2025 through year-end 2025, the audit marks
-the dataset `incomplete_or_unproven` and the site displays that warning. The
-audit also blocks known manual/synthetic data generators and recomputes every
-row's share × price arithmetic.
+If the local store plus source manifest do not prove full coverage of the
+publish window, the audit marks the dataset `incomplete_or_unproven` and the
+site displays that warning — the current quarter fills in night by night, so
+the warning clears as the daily index is walked. The audit also blocks known
+manual/synthetic data generators and recomputes every row's share × price
+arithmetic.
 
 `collector/populate_verified_data.py` is intentionally disabled. Production data
 must be collected from official SEC endpoints only. Price caches must come from
@@ -124,12 +142,22 @@ collector/
   audit.py           row-level integrity/completeness audit -> data/audit.json
   irregularities.py  deterministic review flags -> data/irregularities.json
   build_data.py      aggregation + $10k paper simulation + insider-flow/holding analysis -> data/*.json
-  build_site.py      orchestrator: resumable backfill, then build
+  build_site.py      orchestrator: budgeted collect -> resumable backfill -> build -> verify
   build_pages.py     static HTML generator
+  verify_lines.py    line-by-line verification of every published row -> VERIFICATION.md
   test_bulk.py       parser tests      (offline)
-  test_paper.py      simulation tests  (offline)
+  test_paper.py      simulation + bundle tests (offline)
   test_site.py       published-output contract tests
 ```
+
+**The nightly job is time-budgeted end to end.** `build_site.py` works inside a
+whole-build wall-clock budget (default 85 min, `CEOTRADES_TOTAL_BUDGET_MIN`)
+shared between collection, the resumable backfill and price fetching, with the
+deadline enforced down inside the price fetcher so a hanging provider can never
+push the run past the GitHub Actions timeout. Collection is incremental and
+non-destructive: day markers and shards persist, rows de-duplicate on a stable
+identity key, and already-ingested quarterly archives are only re-downloaded
+inside a 45-day late-filing/amendment window after quarter end.
 
 The corpus is on the order of **15 million rows**, so it is never loaded into
 memory: `store.iter_rows()` streams it, and price bars are released as soon as
@@ -137,17 +165,18 @@ each ticker's positions are simulated.
 
 **The backfill is resumable.** Each nightly run ingests as many
 not-yet-collected quarters as fit in its time budget, newest first, recording
-progress in `collector/data/backfill.json`. The history therefore deepens
-automatically night after night with no manual step, while the two most recent
-quarters are always refreshed so amendments and late filings are absorbed.
+progress in `collector/data/backfill.json`. The publish window therefore
+deepens automatically night after night with no manual step, while quarters
+still inside the 45-day late-filing window are refreshed so amendments and
+late filings are absorbed.
 
 ### Running it yourself
 
 ```bash
-python3 collector/collect_ytd.py --year 2025 --replace-year          # target 2025 full year
-python3 collector/bulk_backfill.py --from-year 2006 --to-year 2025  # optional through-2025 history
 python3 collector/collect.py --days 5 --no-backfill                 # new filings only
-python3 collector/build_data.py --year 2025 --audit-year 2025      # simulate + audit + publish 2025 data
+python3 collector/build_site.py                                     # budgeted collect + backfill + build + verify
+python3 collector/bulk_backfill.py --from-year 2006 --to-year 2026  # optional deeper history
+python3 collector/build_data.py --from-year 2025 --audit-year 2026  # simulate + audit + publish the window
 python3 collector/build_pages.py                                    # regenerate HTML
 ```
 

@@ -87,6 +87,21 @@ Promise.all([CT.load('data/summary.json'), CT.load('data/paper/summary.json').ca
       '<a href="irregularities.html">Review coverage and flags →</a>';
   }
 
+  // Staleness banner: if the newest published filing is older than 4 days the
+  // nightly pipeline is not landing data — say so instead of showing a quietly
+  // frozen site.
+  try {
+    var lastFd = new Date(s.range.to + 'T00:00:00Z');
+    var ageDays = (Date.now() - lastFd.getTime()) / 86400000;
+    if (ageDays > 4) {
+      var sn = document.getElementById('auditnote');
+      sn.style.display = 'block';
+      sn.innerHTML = '<strong>Collection stalled:</strong> the newest filing is from ' +
+        CT.esc(s.range.to) + ' (' + Math.floor(ageDays) + ' days ago). The nightly ' +
+        'collector is not completing — check the <a href="https://github.com/karagemop466-tech/CEOTrades/actions" target="_blank" rel="noopener">workflow runs</a>.';
+    }
+  } catch (e) { /* range.to absent on an empty build; nothing to warn about */ }
+
   var pk = document.getElementById('paperkpis');
   if (p && p.counts && p.counts.open) {
     pk.innerHTML =
