@@ -31,7 +31,6 @@
 </div>
 <div class="card"><h3>Headline findings</h3><div id="findings"></div></div>
 <div class="card" style="margin-top:16px"><h3>Paper-book verification</h3><div id="verify"></div></div>
-<div class="card" style="margin-top:16px"><h3>Separate performance logs</h3><div id="outcomes"></div></div>
 
 <h2 class="sec">Return by holding period <small>median return measured from our entry price</small></h2>
 <div class="card tight"><div id="hz"></div></div>
@@ -87,13 +86,6 @@ function posCols() {
 Promise.all([CT.load('data/paper/summary.json'), CT.load('data/summary.json')])
 .then(function (r) {
   var p = r[0], s = r[1];
-  var oc = p.outcomes || {};
-  document.getElementById('outcomes').innerHTML =
-    '<p><strong class="pos">' + CT.fmtInt(oc.winners || 0) + ' winners</strong> · ' +
-    '<strong class="neg">' + CT.fmtInt(oc.losers || 0) + ' losers</strong> · ' +
-    CT.fmtInt(oc.unclassified || 0) + ' unclassified pending verified prices.</p>' +
-    '<p><a class="btn" href="data/paper/winners.json" target="_blank" rel="noopener">Review winners ↗</a> ' +
-    '<a class="btn" href="data/paper/losers.json" target="_blank" rel="noopener">Review losers ↗</a></p>';
   document.getElementById('findings').innerHTML = (p.findings || []).map(function (f, i) {
     return '<div class="finding"><div class="n">' + (i + 1) + '</div><div>' + CT.esc(f) + '</div></div>';
   }).join('') || '<div class="empty">No findings yet.</div>';

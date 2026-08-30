@@ -1,0 +1,67 @@
+{
+ "generated": "2026-08-30T18:44:12Z",
+ "asof": "2026-08-30",
+ "rule": {
+  "signal": "Form 4/5 code P, non-derivative common equity/ADR, shares>0 & price>0; one $10,000 position per SEC accession+ticker",
+  "entry": "regular-session OPEN of first trading day strictly after the SEC filing date",
+  "exit": "regular-session CLOSE 252 sessions (~1 trading year) after entry; delisted names exit at last observed close and are flagged",
+  "costs": "none modelled (no commission/spread/slippage)",
+  "prices": "Yahoo Finance full-history daily bars, Stooq then Nasdaq fallback; cached per ticker",
+  "no_lookahead": "entry never at/before filing date and never the insider price; exit only from observed sessions"
+ },
+ "window": {
+  "from_year": 2026
+ },
+ "counts": {
+  "trade_rows": 66,
+  "signals": 15,
+  "positions": 15,
+  "verified_entry": 11,
+  "exited": 0,
+  "exited_252": 0,
+  "exit_last_observed_delisted": 0,
+  "open_under_252": 11,
+  "no_price_or_pending": 4
+ },
+ "coverage": {
+  "p_rows": 23,
+  "derivative": 0,
+  "no_ticker": 0,
+  "no_share_or_price": 0,
+  "not_common_equity": 0,
+  "signals": 15
+ },
+ "price_sources": {
+  "nasdaq": 7,
+  "offline_no_cache": 3
+ },
+ "capital": {
+  "deployed": 110000.0,
+  "realised_pnl": 0.0,
+  "realised_roi_mean": null,
+  "win_rate": null
+ },
+ "realised_exit_roi": {
+  "n": 0,
+  "mean": null,
+  "median": null,
+  "win": null,
+  "p25": null,
+  "p75": null,
+  "min": null,
+  "max": null
+ },
+ "open_mark_roi": {
+  "n": 11,
+  "mean": 0.0085,
+  "median": -0.1441,
+  "win": 0.1818,
+  "p25": -0.3151,
+  "p75": -0.0879,
+  "min": -0.8456,
+  "max": 2.3372
+ },
+ "by_exit_year": [],
+ "winners_n": 0,
+ "losers_n": 0
+}

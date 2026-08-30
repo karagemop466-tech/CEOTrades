@@ -1,16 +1,2677 @@
 {
- "generated": "2026-08-29 01:34 UTC",
- "target_year": 2025,
- "checks_passed": 3,
+ "generated": "2026-08-30 18:53 UTC",
+ "target_year": 2026,
+ "checks_passed": 390,
  "checks_failed": 0,
  "failures": [],
- "paper_rows": [],
- "activity_rows": [],
- "trade_sample": [],
+ "paper_rows": [
+  {
+   "id": "0001672688-26-000124:ABSI",
+   "tk": "ABSI",
+   "fd": "2026-07-06",
+   "status": "open",
+   "checks": [
+    {
+     "check": "open_has_verified_entry",
+     "ok": true,
+     "detail": "entry_rule_status=verified"
+    },
+    {
+     "check": "entry_after_filing",
+     "ok": true,
+     "detail": "entry_d=2026-07-07 fd=2026-07-06"
+    },
+    {
+     "check": "entry_gap_1_to_10_days",
+     "ok": true,
+     "detail": "gap=1d"
+    },
+    {
+     "check": "entry_is_weekday",
+     "ok": true,
+     "detail": "entry_d=2026-07-07 (Tuesday)"
+    },
+    {
+     "check": "no_weekend_entry",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "shares=10000/entry_px",
+     "ok": true,
+     "detail": "shares=843.8819 want 843.8819"
+    },
+    {
+     "check": "mtm=shares*last_px",
+     "ok": true,
+     "detail": "mtm=7350.21 want 7350.21"
+    },
+    {
+     "check": "pnl=mtm-stake",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "roi=mtm/stake-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "insider_px=val/sh",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "gap=entry/insider-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "edgar_url_wellformed",
+     "ok": true,
+     "detail": "https://www.sec.gov/Archives/edgar/data/1672688/000167268826000124/0001672688-26-000124-index.htm"
+    },
+    {
+     "check": "r1_date_present",
+     "ok": true,
+     "detail": "r1_d=2026-07-08"
+    },
+    {
+     "check": "r1_price_present",
+     "ok": true,
+     "detail": "r1_px=11.1"
+    },
+    {
+     "check": "r1=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r1=-0.0633 want -0.0633"
+    },
+    {
+     "check": "r5_date_present",
+     "ok": true,
+     "detail": "r5_d=2026-07-14"
+    },
+    {
+     "check": "r5_price_present",
+     "ok": true,
+     "detail": "r5_px=10.23"
+    },
+    {
+     "check": "r5=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r5=-0.1367 want -0.1367"
+    },
+    {
+     "check": "r21_date_present",
+     "ok": true,
+     "detail": "r21_d=2026-08-05"
+    },
+    {
+     "check": "r21_price_present",
+     "ok": true,
+     "detail": "r21_px=8.4"
+    },
+    {
+     "check": "r21=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r21=-0.2911 want -0.2911"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1672688/000167268826000124/0001672688-26-000124-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/ABSI?interval=1d&period1=1783296000&period2=1798761599",
+    "price_src": "nasdaq"
+   }
+  },
+  {
+   "id": "0001493152-26-028685:AGIG",
+   "tk": "AGIG",
+   "fd": "2026-06-15",
+   "status": "open",
+   "checks": [
+    {
+     "check": "open_has_verified_entry",
+     "ok": true,
+     "detail": "entry_rule_status=verified"
+    },
+    {
+     "check": "entry_after_filing",
+     "ok": true,
+     "detail": "entry_d=2026-06-16 fd=2026-06-15"
+    },
+    {
+     "check": "entry_gap_1_to_10_days",
+     "ok": true,
+     "detail": "gap=1d"
+    },
+    {
+     "check": "entry_is_weekday",
+     "ok": true,
+     "detail": "entry_d=2026-06-16 (Tuesday)"
+    },
+    {
+     "check": "no_weekend_entry",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "shares=10000/entry_px",
+     "ok": true,
+     "detail": "shares=8695.6522 want 8695.6522"
+    },
+    {
+     "check": "mtm=shares*last_px",
+     "ok": true,
+     "detail": "mtm=8782.61 want 8782.61"
+    },
+    {
+     "check": "pnl=mtm-stake",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "roi=mtm/stake-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "insider_px=val/sh",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "gap=entry/insider-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "edgar_url_wellformed",
+     "ok": true,
+     "detail": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226028685/0001493152-26-028685-index.htm"
+    },
+    {
+     "check": "r1_date_present",
+     "ok": true,
+     "detail": "r1_d=2026-06-17"
+    },
+    {
+     "check": "r1_price_present",
+     "ok": true,
+     "detail": "r1_px=1.11"
+    },
+    {
+     "check": "r1=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r1=-0.0348 want -0.0348"
+    },
+    {
+     "check": "r5_date_present",
+     "ok": true,
+     "detail": "r5_d=2026-06-24"
+    },
+    {
+     "check": "r5_price_present",
+     "ok": true,
+     "detail": "r5_px=0.91"
+    },
+    {
+     "check": "r5=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r5=-0.2087 want -0.2087"
+    },
+    {
+     "check": "r21_date_present",
+     "ok": true,
+     "detail": "r21_d=2026-07-17"
+    },
+    {
+     "check": "r21_price_present",
+     "ok": true,
+     "detail": "r21_px=1.01"
+    },
+    {
+     "check": "r21=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r21=-0.1217 want -0.1217"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226028685/0001493152-26-028685-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/AGIG?interval=1d&period1=1781481600&period2=1798761599",
+    "price_src": "nasdaq"
+   }
+  },
+  {
+   "id": "0001104659-26-074164:CTSO",
+   "tk": "CTSO",
+   "fd": "2026-06-15",
+   "status": "open",
+   "checks": [
+    {
+     "check": "open_has_verified_entry",
+     "ok": true,
+     "detail": "entry_rule_status=verified"
+    },
+    {
+     "check": "entry_after_filing",
+     "ok": true,
+     "detail": "entry_d=2026-06-16 fd=2026-06-15"
+    },
+    {
+     "check": "entry_gap_1_to_10_days",
+     "ok": true,
+     "detail": "gap=1d"
+    },
+    {
+     "check": "entry_is_weekday",
+     "ok": true,
+     "detail": "entry_d=2026-06-16 (Tuesday)"
+    },
+    {
+     "check": "no_weekend_entry",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "shares=10000/entry_px",
+     "ok": true,
+     "detail": "shares=20408.1633 want 20408.1633"
+    },
+    {
+     "check": "mtm=shares*last_px",
+     "ok": true,
+     "detail": "mtm=6848.98 want 6848.98"
+    },
+    {
+     "check": "pnl=mtm-stake",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "roi=mtm/stake-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "insider_px=val/sh",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "gap=entry/insider-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "edgar_url_wellformed",
+     "ok": true,
+     "detail": "https://www.sec.gov/Archives/edgar/data/1175151/000110465926074164/0001104659-26-074164-index.htm"
+    },
+    {
+     "check": "r1_date_present",
+     "ok": true,
+     "detail": "r1_d=2026-06-17"
+    },
+    {
+     "check": "r1_price_present",
+     "ok": true,
+     "detail": "r1_px=0.477"
+    },
+    {
+     "check": "r1=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r1=-0.0265 want -0.0265"
+    },
+    {
+     "check": "r5_date_present",
+     "ok": true,
+     "detail": "r5_d=2026-06-24"
+    },
+    {
+     "check": "r5_price_present",
+     "ok": true,
+     "detail": "r5_px=0.467"
+    },
+    {
+     "check": "r5=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r5=-0.0469 want -0.0469"
+    },
+    {
+     "check": "r21_date_present",
+     "ok": true,
+     "detail": "r21_d=2026-07-17"
+    },
+    {
+     "check": "r21_price_present",
+     "ok": true,
+     "detail": "r21_px=0.36"
+    },
+    {
+     "check": "r21=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r21=-0.2653 want -0.2653"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1175151/000110465926074164/0001104659-26-074164-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/CTSO?interval=1d&period1=1781481600&period2=1798761599",
+    "price_src": "nasdaq"
+   }
+  },
+  {
+   "id": "0001493152-26-027810:DBGI",
+   "tk": "DBGI",
+   "fd": "2026-06-09",
+   "status": "open",
+   "checks": [
+    {
+     "check": "open_has_verified_entry",
+     "ok": true,
+     "detail": "entry_rule_status=verified"
+    },
+    {
+     "check": "entry_after_filing",
+     "ok": true,
+     "detail": "entry_d=2026-06-10 fd=2026-06-09"
+    },
+    {
+     "check": "entry_gap_1_to_10_days",
+     "ok": true,
+     "detail": "gap=1d"
+    },
+    {
+     "check": "entry_is_weekday",
+     "ok": true,
+     "detail": "entry_d=2026-06-10 (Wednesday)"
+    },
+    {
+     "check": "no_weekend_entry",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "shares=10000/entry_px",
+     "ok": true,
+     "detail": "shares=229.3578 want 229.3578"
+    },
+    {
+     "check": "roi_review_blanks_headline",
+     "ok": true,
+     "detail": "roi=None mtm=None"
+    },
+    {
+     "check": "roi_review_retains_raw",
+     "ok": true,
+     "detail": "raw return kept in roi_reported"
+    },
+    {
+     "check": "insider_px=val/sh",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "gap=entry/insider-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "edgar_url_wellformed",
+     "ok": true,
+     "detail": "https://www.sec.gov/Archives/edgar/data/1668010/000149315226027810/0001493152-26-027810-index.htm"
+    },
+    {
+     "check": "r1_date_present",
+     "ok": true,
+     "detail": "r1_d=2026-06-11"
+    },
+    {
+     "check": "r1_price_present",
+     "ok": true,
+     "detail": "r1_px=38.916"
+    },
+    {
+     "check": "r1=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r1=-0.1074 want -0.1074"
+    },
+    {
+     "check": "r5_date_present",
+     "ok": true,
+     "detail": "r5_d=2026-06-17"
+    },
+    {
+     "check": "r5_price_present",
+     "ok": true,
+     "detail": "r5_px=29.288"
+    },
+    {
+     "check": "r5=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r5=-0.3283 want -0.3283"
+    },
+    {
+     "check": "r21_date_present",
+     "ok": true,
+     "detail": "r21_d=2026-07-13"
+    },
+    {
+     "check": "r21_price_present",
+     "ok": true,
+     "detail": "r21_px=28.12"
+    },
+    {
+     "check": "r21=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r21=-0.355 want -0.3550"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1668010/000149315226027810/0001493152-26-027810-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/DBGI?interval=1d&period1=1780963200&period2=1798761599",
+    "price_src": "nasdaq"
+   }
+  },
+  {
+   "id": "0001493152-26-024597:AGIG",
+   "tk": "AGIG",
+   "fd": "2026-05-20",
+   "status": "open",
+   "checks": [
+    {
+     "check": "open_has_verified_entry",
+     "ok": true,
+     "detail": "entry_rule_status=verified"
+    },
+    {
+     "check": "entry_after_filing",
+     "ok": true,
+     "detail": "entry_d=2026-05-21 fd=2026-05-20"
+    },
+    {
+     "check": "entry_gap_1_to_10_days",
+     "ok": true,
+     "detail": "gap=1d"
+    },
+    {
+     "check": "entry_is_weekday",
+     "ok": true,
+     "detail": "entry_d=2026-05-21 (Thursday)"
+    },
+    {
+     "check": "no_weekend_entry",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "shares=10000/entry_px",
+     "ok": true,
+     "detail": "shares=8474.5763 want 8474.5763"
+    },
+    {
+     "check": "mtm=shares*last_px",
+     "ok": true,
+     "detail": "mtm=8559.32 want 8559.32"
+    },
+    {
+     "check": "pnl=mtm-stake",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "roi=mtm/stake-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "insider_px=val/sh",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "gap=entry/insider-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "edgar_url_wellformed",
+     "ok": true,
+     "detail": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226024597/0001493152-26-024597-index.htm"
+    },
+    {
+     "check": "r1_date_present",
+     "ok": true,
+     "detail": "r1_d=2026-05-22"
+    },
+    {
+     "check": "r1_price_present",
+     "ok": true,
+     "detail": "r1_px=1.19"
+    },
+    {
+     "check": "r1=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r1=0.0085 want 0.0085"
+    },
+    {
+     "check": "r5_date_present",
+     "ok": true,
+     "detail": "r5_d=2026-05-29"
+    },
+    {
+     "check": "r5_price_present",
+     "ok": true,
+     "detail": "r5_px=1.17"
+    },
+    {
+     "check": "r5=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r5=-0.0085 want -0.0085"
+    },
+    {
+     "check": "r21_date_present",
+     "ok": true,
+     "detail": "r21_d=2026-06-23"
+    },
+    {
+     "check": "r21_price_present",
+     "ok": true,
+     "detail": "r21_px=0.9718"
+    },
+    {
+     "check": "r21=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r21=-0.1764 want -0.1764"
+    },
+    {
+     "check": "r63_date_present",
+     "ok": true,
+     "detail": "r63_d=2026-08-21"
+    },
+    {
+     "check": "r63_price_present",
+     "ok": true,
+     "detail": "r63_px=0.9601"
+    },
+    {
+     "check": "r63=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r63=-0.1864 want -0.1864"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226024597/0001493152-26-024597-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/AGIG?interval=1d&period1=1779235200&period2=1798761599",
+    "price_src": "nasdaq"
+   }
+  },
+  {
+   "id": "0001062993-26-002799:ACCS",
+   "tk": "ACCS",
+   "fd": "2026-05-19",
+   "status": "open",
+   "checks": [
+    {
+     "check": "open_has_verified_entry",
+     "ok": true,
+     "detail": "entry_rule_status=verified"
+    },
+    {
+     "check": "entry_after_filing",
+     "ok": true,
+     "detail": "entry_d=2026-05-20 fd=2026-05-19"
+    },
+    {
+     "check": "entry_gap_1_to_10_days",
+     "ok": true,
+     "detail": "gap=1d"
+    },
+    {
+     "check": "entry_is_weekday",
+     "ok": true,
+     "detail": "entry_d=2026-05-20 (Wednesday)"
+    },
+    {
+     "check": "no_weekend_entry",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "shares=10000/entry_px",
+     "ok": true,
+     "detail": "shares=1597.4441 want 1597.4441"
+    },
+    {
+     "check": "mtm=shares*last_px",
+     "ok": true,
+     "detail": "mtm=9121.41 want 9121.41"
+    },
+    {
+     "check": "pnl=mtm-stake",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "roi=mtm/stake-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "insider_px=val/sh",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "gap=entry/insider-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "edgar_url_wellformed",
+     "ok": true,
+     "detail": "https://www.sec.gov/Archives/edgar/data/843006/000106299326002799/0001062993-26-002799-index.htm"
+    },
+    {
+     "check": "r1_date_present",
+     "ok": true,
+     "detail": "r1_d=2026-05-21"
+    },
+    {
+     "check": "r1_price_present",
+     "ok": true,
+     "detail": "r1_px=6.4"
+    },
+    {
+     "check": "r1=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r1=0.0224 want 0.0224"
+    },
+    {
+     "check": "r5_date_present",
+     "ok": true,
+     "detail": "r5_d=2026-05-28"
+    },
+    {
+     "check": "r5_price_present",
+     "ok": true,
+     "detail": "r5_px=6.32"
+    },
+    {
+     "check": "r5=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r5=0.0096 want 0.0096"
+    },
+    {
+     "check": "r21_date_present",
+     "ok": true,
+     "detail": "r21_d=2026-06-22"
+    },
+    {
+     "check": "r21_price_present",
+     "ok": true,
+     "detail": "r21_px=6.09"
+    },
+    {
+     "check": "r21=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r21=-0.0272 want -0.0272"
+    },
+    {
+     "check": "r63_date_present",
+     "ok": true,
+     "detail": "r63_d=2026-08-20"
+    },
+    {
+     "check": "r63_price_present",
+     "ok": true,
+     "detail": "r63_px=4.95"
+    },
+    {
+     "check": "r63=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r63=-0.2093 want -0.2093"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/843006/000106299326002799/0001062993-26-002799-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/ACCS?interval=1d&period1=1779148800&period2=1798761599",
+    "price_src": "nasdaq"
+   }
+  },
+  {
+   "id": "0001493152-26-023264:AGIG",
+   "tk": "AGIG",
+   "fd": "2026-05-15",
+   "status": "open",
+   "checks": [
+    {
+     "check": "open_has_verified_entry",
+     "ok": true,
+     "detail": "entry_rule_status=verified"
+    },
+    {
+     "check": "entry_after_filing",
+     "ok": true,
+     "detail": "entry_d=2026-05-18 fd=2026-05-15"
+    },
+    {
+     "check": "entry_gap_1_to_10_days",
+     "ok": true,
+     "detail": "gap=3d"
+    },
+    {
+     "check": "entry_is_weekday",
+     "ok": true,
+     "detail": "entry_d=2026-05-18 (Monday)"
+    },
+    {
+     "check": "no_weekend_entry",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "shares=10000/entry_px",
+     "ok": true,
+     "detail": "shares=8928.5714 want 8928.5714"
+    },
+    {
+     "check": "mtm=shares*last_px",
+     "ok": true,
+     "detail": "mtm=9017.86 want 9017.86"
+    },
+    {
+     "check": "pnl=mtm-stake",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "roi=mtm/stake-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "insider_px=val/sh",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "gap=entry/insider-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "edgar_url_wellformed",
+     "ok": true,
+     "detail": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226023264/0001493152-26-023264-index.htm"
+    },
+    {
+     "check": "r1_date_present",
+     "ok": true,
+     "detail": "r1_d=2026-05-19"
+    },
+    {
+     "check": "r1_price_present",
+     "ok": true,
+     "detail": "r1_px=1.2"
+    },
+    {
+     "check": "r1=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r1=0.0714 want 0.0714"
+    },
+    {
+     "check": "r5_date_present",
+     "ok": true,
+     "detail": "r5_d=2026-05-26"
+    },
+    {
+     "check": "r5_price_present",
+     "ok": true,
+     "detail": "r5_px=1.15"
+    },
+    {
+     "check": "r5=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r5=0.0268 want 0.0268"
+    },
+    {
+     "check": "r21_date_present",
+     "ok": true,
+     "detail": "r21_d=2026-06-17"
+    },
+    {
+     "check": "r21_price_present",
+     "ok": true,
+     "detail": "r21_px=1.11"
+    },
+    {
+     "check": "r21=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r21=-0.0089 want -0.0089"
+    },
+    {
+     "check": "r63_date_present",
+     "ok": true,
+     "detail": "r63_d=2026-08-18"
+    },
+    {
+     "check": "r63_price_present",
+     "ok": true,
+     "detail": "r63_px=0.92"
+    },
+    {
+     "check": "r63=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r63=-0.1786 want -0.1786"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226023264/0001493152-26-023264-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/AGIG?interval=1d&period1=1778803200&period2=1798761599",
+    "price_src": "nasdaq"
+   }
+  },
+  {
+   "id": "0001493152-26-023155:AGIG",
+   "tk": "AGIG",
+   "fd": "2026-05-14",
+   "status": "open",
+   "checks": [
+    {
+     "check": "open_has_verified_entry",
+     "ok": true,
+     "detail": "entry_rule_status=verified"
+    },
+    {
+     "check": "entry_after_filing",
+     "ok": true,
+     "detail": "entry_d=2026-05-15 fd=2026-05-14"
+    },
+    {
+     "check": "entry_gap_1_to_10_days",
+     "ok": true,
+     "detail": "gap=1d"
+    },
+    {
+     "check": "entry_is_weekday",
+     "ok": true,
+     "detail": "entry_d=2026-05-15 (Friday)"
+    },
+    {
+     "check": "no_weekend_entry",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "shares=10000/entry_px",
+     "ok": true,
+     "detail": "shares=8333.3333 want 8333.3333"
+    },
+    {
+     "check": "mtm=shares*last_px",
+     "ok": true,
+     "detail": "mtm=8416.67 want 8416.67"
+    },
+    {
+     "check": "pnl=mtm-stake",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "roi=mtm/stake-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "insider_px=val/sh",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "gap=entry/insider-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "edgar_url_wellformed",
+     "ok": true,
+     "detail": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226023155/0001493152-26-023155-index.htm"
+    },
+    {
+     "check": "r1_date_present",
+     "ok": true,
+     "detail": "r1_d=2026-05-18"
+    },
+    {
+     "check": "r1_price_present",
+     "ok": true,
+     "detail": "r1_px=1.16"
+    },
+    {
+     "check": "r1=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r1=-0.0333 want -0.0333"
+    },
+    {
+     "check": "r5_date_present",
+     "ok": true,
+     "detail": "r5_d=2026-05-22"
+    },
+    {
+     "check": "r5_price_present",
+     "ok": true,
+     "detail": "r5_px=1.19"
+    },
+    {
+     "check": "r5=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r5=-0.0083 want -0.0083"
+    },
+    {
+     "check": "r21_date_present",
+     "ok": true,
+     "detail": "r21_d=2026-06-16"
+    },
+    {
+     "check": "r21_price_present",
+     "ok": true,
+     "detail": "r21_px=1.15"
+    },
+    {
+     "check": "r21=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r21=-0.0417 want -0.0417"
+    },
+    {
+     "check": "r63_date_present",
+     "ok": true,
+     "detail": "r63_d=2026-08-17"
+    },
+    {
+     "check": "r63_price_present",
+     "ok": true,
+     "detail": "r63_px=0.927"
+    },
+    {
+     "check": "r63=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r63=-0.2275 want -0.2275"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226023155/0001493152-26-023155-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/AGIG?interval=1d&period1=1778716800&period2=1798761599",
+    "price_src": "nasdaq"
+   }
+  },
+  {
+   "id": "0000950142-26-001403:ALKT",
+   "tk": "ALKT",
+   "fd": "2026-05-14",
+   "status": "open",
+   "checks": [
+    {
+     "check": "open_has_verified_entry",
+     "ok": true,
+     "detail": "entry_rule_status=verified"
+    },
+    {
+     "check": "entry_after_filing",
+     "ok": true,
+     "detail": "entry_d=2026-05-15 fd=2026-05-14"
+    },
+    {
+     "check": "entry_gap_1_to_10_days",
+     "ok": true,
+     "detail": "gap=1d"
+    },
+    {
+     "check": "entry_is_weekday",
+     "ok": true,
+     "detail": "entry_d=2026-05-15 (Friday)"
+    },
+    {
+     "check": "no_weekend_entry",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "shares=10000/entry_px",
+     "ok": true,
+     "detail": "shares=591.716 want 591.7160"
+    },
+    {
+     "check": "mtm=shares*last_px",
+     "ok": true,
+     "detail": "mtm=11964.5 want 11964.50"
+    },
+    {
+     "check": "pnl=mtm-stake",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "roi=mtm/stake-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "insider_px=val/sh",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "gap=entry/insider-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "edgar_url_wellformed",
+     "ok": true,
+     "detail": "https://www.sec.gov/Archives/edgar/data/1529274/000095014226001403/0000950142-26-001403-index.htm"
+    },
+    {
+     "check": "r1_date_present",
+     "ok": true,
+     "detail": "r1_d=2026-05-18"
+    },
+    {
+     "check": "r1_price_present",
+     "ok": true,
+     "detail": "r1_px=16.99"
+    },
+    {
+     "check": "r1=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r1=0.0053 want 0.0053"
+    },
+    {
+     "check": "r5_date_present",
+     "ok": true,
+     "detail": "r5_d=2026-05-22"
+    },
+    {
+     "check": "r5_price_present",
+     "ok": true,
+     "detail": "r5_px=16.8"
+    },
+    {
+     "check": "r5=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r5=-0.0059 want -0.0059"
+    },
+    {
+     "check": "r21_date_present",
+     "ok": true,
+     "detail": "r21_d=2026-06-16"
+    },
+    {
+     "check": "r21_price_present",
+     "ok": true,
+     "detail": "r21_px=15.55"
+    },
+    {
+     "check": "r21=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r21=-0.0799 want -0.0799"
+    },
+    {
+     "check": "r63_date_present",
+     "ok": true,
+     "detail": "r63_d=2026-08-17"
+    },
+    {
+     "check": "r63_price_present",
+     "ok": true,
+     "detail": "r63_px=20.21"
+    },
+    {
+     "check": "r63=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r63=0.1959 want 0.1959"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1529274/000095014226001403/0000950142-26-001403-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/ALKT?interval=1d&period1=1778716800&period2=1798761599",
+    "price_src": "nasdaq"
+   }
+  },
+  {
+   "id": "0001731122-26-000462:VEEE",
+   "tk": "VEEE",
+   "fd": "2026-03-19",
+   "status": "no_price",
+   "checks": [
+    {
+     "check": "nonopen_has_no_entry_price",
+     "ok": true,
+     "detail": "entry_px=None status=no_price"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1855509/000173112226000462/0001731122-26-000462-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/VEEE?interval=1d&period1=1735689600&period2=1798761599",
+    "price_src": "none"
+   }
+  },
+  {
+   "id": "0001193125-26-111290:MYO",
+   "tk": "MYO",
+   "fd": "2026-03-17",
+   "status": "no_price",
+   "checks": [
+    {
+     "check": "nonopen_has_no_entry_price",
+     "ok": true,
+     "detail": "entry_px=None status=no_price"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1369290/000119312526111290/0001193125-26-111290-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/MYO?interval=1d&period1=1735689600&period2=1798761599",
+    "price_src": "none"
+   }
+  },
+  {
+   "id": "0001672688-26-000049:ABSI",
+   "tk": "ABSI",
+   "fd": "2026-03-16",
+   "status": "open",
+   "checks": [
+    {
+     "check": "open_has_verified_entry",
+     "ok": true,
+     "detail": "entry_rule_status=verified"
+    },
+    {
+     "check": "entry_after_filing",
+     "ok": true,
+     "detail": "entry_d=2026-03-17 fd=2026-03-16"
+    },
+    {
+     "check": "entry_gap_1_to_10_days",
+     "ok": true,
+     "detail": "gap=1d"
+    },
+    {
+     "check": "entry_is_weekday",
+     "ok": true,
+     "detail": "entry_d=2026-03-17 (Tuesday)"
+    },
+    {
+     "check": "no_weekend_entry",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "shares=10000/entry_px",
+     "ok": true,
+     "detail": "shares=3831.4176 want 3831.4176"
+    },
+    {
+     "check": "mtm=shares*last_px",
+     "ok": true,
+     "detail": "mtm=33371.65 want 33371.65"
+    },
+    {
+     "check": "pnl=mtm-stake",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "roi=mtm/stake-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "insider_px=val/sh",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "gap=entry/insider-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "edgar_url_wellformed",
+     "ok": true,
+     "detail": "https://www.sec.gov/Archives/edgar/data/1672688/000167268826000049/0001672688-26-000049-index.htm"
+    },
+    {
+     "check": "r1_date_present",
+     "ok": true,
+     "detail": "r1_d=2026-03-18"
+    },
+    {
+     "check": "r1_price_present",
+     "ok": true,
+     "detail": "r1_px=2.86"
+    },
+    {
+     "check": "r1=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r1=0.0958 want 0.0958"
+    },
+    {
+     "check": "r5_date_present",
+     "ok": true,
+     "detail": "r5_d=2026-03-24"
+    },
+    {
+     "check": "r5_price_present",
+     "ok": true,
+     "detail": "r5_px=3.01"
+    },
+    {
+     "check": "r5=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r5=0.1533 want 0.1533"
+    },
+    {
+     "check": "r21_date_present",
+     "ok": true,
+     "detail": "r21_d=2026-04-16"
+    },
+    {
+     "check": "r21_price_present",
+     "ok": true,
+     "detail": "r21_px=3.23"
+    },
+    {
+     "check": "r21=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r21=0.2375 want 0.2375"
+    },
+    {
+     "check": "r63_date_present",
+     "ok": true,
+     "detail": "r63_d=2026-06-16"
+    },
+    {
+     "check": "r63_price_present",
+     "ok": true,
+     "detail": "r63_px=7.0"
+    },
+    {
+     "check": "r63=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r63=1.682 want 1.6820"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1672688/000167268826000049/0001672688-26-000049-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/ABSI?interval=1d&period1=1773619200&period2=1798761599",
+    "price_src": "nasdaq"
+   }
+  },
+  {
+   "id": "0001731122-26-000395:VEEE",
+   "tk": "VEEE",
+   "fd": "2026-03-13",
+   "status": "no_price",
+   "checks": [
+    {
+     "check": "nonopen_has_no_entry_price",
+     "ok": true,
+     "detail": "entry_px=None status=no_price"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1855509/000173112226000395/0001731122-26-000395-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/VEEE?interval=1d&period1=1735689600&period2=1798761599",
+    "price_src": "none"
+   }
+  },
+  {
+   "id": "0001140361-26-008363:ADMA",
+   "tk": "ADMA",
+   "fd": "2026-03-09",
+   "status": "open",
+   "checks": [
+    {
+     "check": "open_has_verified_entry",
+     "ok": true,
+     "detail": "entry_rule_status=verified"
+    },
+    {
+     "check": "entry_after_filing",
+     "ok": true,
+     "detail": "entry_d=2026-03-10 fd=2026-03-09"
+    },
+    {
+     "check": "entry_gap_1_to_10_days",
+     "ok": true,
+     "detail": "gap=1d"
+    },
+    {
+     "check": "entry_is_weekday",
+     "ok": true,
+     "detail": "entry_d=2026-03-10 (Tuesday)"
+    },
+    {
+     "check": "no_weekend_entry",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "shares=10000/entry_px",
+     "ok": true,
+     "detail": "shares=637.3486 want 637.3486"
+    },
+    {
+     "check": "mtm=shares*last_px",
+     "ok": true,
+     "detail": "mtm=5952.84 want 5952.84"
+    },
+    {
+     "check": "pnl=mtm-stake",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "roi=mtm/stake-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "insider_px=val/sh",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "gap=entry/insider-1",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "check": "edgar_url_wellformed",
+     "ok": true,
+     "detail": "https://www.sec.gov/Archives/edgar/data/1368514/000114036126008363/0001140361-26-008363-index.htm"
+    },
+    {
+     "check": "r1_date_present",
+     "ok": true,
+     "detail": "r1_d=2026-03-11"
+    },
+    {
+     "check": "r1_price_present",
+     "ok": true,
+     "detail": "r1_px=15.67"
+    },
+    {
+     "check": "r1=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r1=-0.0013 want -0.0013"
+    },
+    {
+     "check": "r5_date_present",
+     "ok": true,
+     "detail": "r5_d=2026-03-17"
+    },
+    {
+     "check": "r5_price_present",
+     "ok": true,
+     "detail": "r5_px=16.15"
+    },
+    {
+     "check": "r5=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r5=0.0293 want 0.0293"
+    },
+    {
+     "check": "r21_date_present",
+     "ok": true,
+     "detail": "r21_d=2026-04-09"
+    },
+    {
+     "check": "r21_price_present",
+     "ok": true,
+     "detail": "r21_px=9.94"
+    },
+    {
+     "check": "r21=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r21=-0.3665 want -0.3665"
+    },
+    {
+     "check": "r63_date_present",
+     "ok": true,
+     "detail": "r63_d=2026-06-09"
+    },
+    {
+     "check": "r63_price_present",
+     "ok": true,
+     "detail": "r63_px=8.12"
+    },
+    {
+     "check": "r63=exit_px/entry_px-1",
+     "ok": true,
+     "detail": "r63=-0.4825 want -0.4825"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1368514/000114036126008363/0001140361-26-008363-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/ADMA?interval=1d&period1=1773014400&period2=1798761599",
+    "price_src": "nasdaq"
+   }
+  },
+  {
+   "id": "0001225208-26-003385:ICFI",
+   "tk": "ICFI",
+   "fd": "2026-03-06",
+   "status": "no_price",
+   "checks": [
+    {
+     "check": "nonopen_has_no_entry_price",
+     "ok": true,
+     "detail": "entry_px=None status=no_price"
+    }
+   ],
+   "review": {
+    "sec_filing": "https://www.sec.gov/Archives/edgar/data/1362004/000122520826003385/0001225208-26-003385-index.htm",
+    "entry_window_prices": "https://query1.finance.yahoo.com/v8/finance/chart/ICFI?interval=1d&period1=1735689600&period2=1798761599",
+    "price_src": "none"
+   }
+  }
+ ],
+ "activity_rows": [
+  {
+   "id": "1017645:1529274",
+   "insider": "GENERAL ATLANTIC, L.P. (+9 joint)",
+   "co": "ALKAMI TECHNOLOGY, INC.",
+   "tk": "ALKT",
+   "buy_n": 3,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 19420994.0,
+   "holding_value": 392692498.68,
+   "valuation_status": "priced",
+   "latest_holding_fd": "2026-05-14",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1529274/000095014226001403/0000950142-26-001403-index.htm"
+   ]
+  },
+  {
+   "id": "1823951:1321655",
+   "insider": "Karp Alexander C.",
+   "co": "Palantir Technologies Inc.",
+   "tk": "PLTR",
+   "buy_n": 0,
+   "sell_n": 2,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 371477.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-08-24",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1321655/000182395126000009/0001823951-26-000009-index.htm"
+   ]
+  },
+  {
+   "id": "1374545:1018724",
+   "insider": "Jassy Andrew R",
+   "co": "AMAZON COM INC",
+   "tk": "AMZN",
+   "buy_n": 0,
+   "sell_n": 4,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 2235766.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-08-25",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1018724/000137454526000010/0001374545-26-000010-index.htm"
+   ]
+  },
+  {
+   "id": "1739092:1326801",
+   "insider": "LI SUSAN J",
+   "co": "Meta Platforms, Inc.",
+   "tk": "META",
+   "buy_n": 0,
+   "sell_n": 13,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 13186.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-08-20",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1326801/000095010326012727/0000950103-26-012727-index.htm"
+   ]
+  },
+  {
+   "id": "1917373:1326801",
+   "insider": "Bosworth Andrew",
+   "co": "Meta Platforms, Inc.",
+   "tk": "META",
+   "buy_n": 0,
+   "sell_n": 1,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 828.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-08-20",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1326801/000095010326012726/0000950103-26-012726-index.htm"
+   ]
+  },
+  {
+   "id": "1780525:320193",
+   "insider": "Newstead Jennifer",
+   "co": "Apple Inc.",
+   "tk": "AAPL",
+   "buy_n": 0,
+   "sell_n": 3,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 37229.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-08-27",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/320193/000114036126034741/0001140361-26-034741-index.htm",
+    "https://www.sec.gov/Archives/edgar/data/320193/000114036126033928/0001140361-26-033928-index.htm",
+    "https://www.sec.gov/Archives/edgar/data/320193/000114036126032884/0001140361-26-032884-index.htm"
+   ]
+  },
+  {
+   "id": "2105423:1326801",
+   "insider": "Mahoney Curtis J.",
+   "co": "Meta Platforms, Inc.",
+   "tk": "META",
+   "buy_n": 0,
+   "sell_n": 1,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 1957.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-08-20",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1326801/000095010326012729/0000950103-26-012729-index.htm"
+   ]
+  },
+  {
+   "id": "1323385:1047335",
+   "insider": "FLATT STEPHEN FOWLER",
+   "co": "NATIONAL HEALTHCARE CORP",
+   "tk": "NHC",
+   "buy_n": 0,
+   "sell_n": 1,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 65487.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-08-21",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1047335/000143774926028642/0001437749-26-028642-index.htm"
+   ]
+  },
+  {
+   "id": "1775029:1672688",
+   "insider": "Busch Andreas",
+   "co": "Absci Corp",
+   "tk": "ABSI",
+   "buy_n": 1,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 421446.0,
+   "holding_value": 3670794.66,
+   "valuation_status": "priced",
+   "latest_holding_fd": "2026-03-16",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1672688/000167268826000049/0001672688-26-000049-index.htm"
+   ]
+  },
+  {
+   "id": "1250195:1368514",
+   "insider": "ELMS STEVE",
+   "co": "ADMA BIOLOGICS, INC.",
+   "tk": "ADMA",
+   "buy_n": 2,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 2045730.0,
+   "holding_value": 19107118.2,
+   "valuation_status": "priced",
+   "latest_holding_fd": "2026-03-09",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1368514/000114036126008363/0001140361-26-008363-index.htm"
+   ]
+  },
+  {
+   "id": "1410289:1672688",
+   "insider": "Szela Mary T",
+   "co": "Absci Corp",
+   "tk": "ABSI",
+   "buy_n": 1,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 21300.0,
+   "holding_value": 185523.0,
+   "valuation_status": "priced",
+   "latest_holding_fd": "2026-07-06",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1672688/000167268826000124/0001672688-26-000124-index.htm"
+   ]
+  },
+  {
+   "id": "1442786:1175151",
+   "insider": "Chan Phillip P.",
+   "co": "Cytosorbents Corp",
+   "tk": "CTSO",
+   "buy_n": 2,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 1744432.0,
+   "holding_value": 585431.38,
+   "valuation_status": "priced",
+   "latest_holding_fd": "2026-06-15",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1175151/000110465926074164/0001104659-26-074164-index.htm"
+   ]
+  },
+  {
+   "id": "1674265:843006",
+   "insider": "Rein Graeme P.",
+   "co": "ACCESS Newswire Inc.",
+   "tk": "ACCS",
+   "buy_n": 2,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 79733.0,
+   "holding_value": 455275.43,
+   "valuation_status": "priced",
+   "latest_holding_fd": "2026-05-19",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/843006/000106299326002799/0001062993-26-002799-index.htm"
+   ]
+  },
+  {
+   "id": "1694310:1362004",
+   "insider": "Mehl Randall",
+   "co": "ICF International, Inc.",
+   "tk": "ICFI",
+   "buy_n": 1,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 21574.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-03-06",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1362004/000122520826003385/0001225208-26-003385-index.htm"
+   ]
+  },
+  {
+   "id": "2076180:1156041",
+   "insider": "Gillespie Edward Oliver",
+   "co": "ABUNDIA GLOBAL IMPACT GROUP, INC.",
+   "tk": "AGIG",
+   "buy_n": 5,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 202248.0,
+   "holding_value": 204270.48,
+   "valuation_status": "priced",
+   "latest_holding_fd": "2026-06-15",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1156041/000149315226028685/0001493152-26-028685-index.htm",
+    "https://www.sec.gov/Archives/edgar/data/1156041/000149315226024597/0001493152-26-024597-index.htm",
+    "https://www.sec.gov/Archives/edgar/data/1156041/000149315226023155/0001493152-26-023155-index.htm"
+   ]
+  },
+  {
+   "id": "1860737:1668010",
+   "insider": "DAVIS JOHN HILBURN IV",
+   "co": "Digital Brands Group, Inc.",
+   "tk": "DBGI",
+   "buy_n": 1,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 70128.0287,
+   "holding_value": 471961.63,
+   "valuation_status": "priced",
+   "latest_holding_fd": "2026-06-09",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1668010/000149315226027810/0001493152-26-027810-index.htm"
+   ]
+  },
+  {
+   "id": "1409891:1855509",
+   "insider": "SWETS LARRY G JR",
+   "co": "Twin Vee PowerCats, Co.",
+   "tk": "VEEE",
+   "buy_n": 1,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 150000.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-03-13",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1855509/000173112226000395/0001731122-26-000395-index.htm"
+   ]
+  },
+  {
+   "id": "1481485:1369290",
+   "insider": "Getz Heather C",
+   "co": "MYOMO, INC.",
+   "tk": "MYO",
+   "buy_n": 1,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 131754.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-03-17",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1369290/000119312526111290/0001193125-26-111290-index.htm"
+   ]
+  },
+  {
+   "id": "1859063:1156041",
+   "insider": "Bailey Robert J.",
+   "co": "ABUNDIA GLOBAL IMPACT GROUP, INC.",
+   "tk": "AGIG",
+   "buy_n": 2,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 142500.0,
+   "holding_value": 143925.0,
+   "valuation_status": "priced",
+   "latest_holding_fd": "2026-05-15",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1156041/000149315226023264/0001493152-26-023264-index.htm"
+   ]
+  },
+  {
+   "id": "1718094:1855509",
+   "insider": "Schuyler Kevin",
+   "co": "Twin Vee PowerCats, Co.",
+   "tk": "VEEE",
+   "buy_n": 1,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 31252.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-03-19",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1855509/000173112226000462/0001731122-26-000462-index.htm"
+   ]
+  },
+  {
+   "id": "1761679:1652044",
+   "insider": "Ashkenazi Anat",
+   "co": "Alphabet Inc.",
+   "tk": "GOOGL",
+   "buy_n": 0,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": null,
+   "holding_value": null,
+   "valuation_status": "no_reported_post_transaction_common_shares",
+   "latest_holding_fd": "",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1652044/000119312526371785/0001193125-26-371785-index.htm"
+   ]
+  },
+  {
+   "id": "1837573:1652044",
+   "insider": "Schindler Philipp",
+   "co": "Alphabet Inc.",
+   "tk": "GOOGL",
+   "buy_n": 0,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": null,
+   "holding_value": null,
+   "valuation_status": "no_reported_post_transaction_common_shares",
+   "latest_holding_fd": "",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1652044/000119312526371788/0001193125-26-371788-index.htm"
+   ]
+  },
+  {
+   "id": "1310264:1045810",
+   "insider": "Johnson Suzanne M Nora",
+   "co": "NVIDIA CORP",
+   "tk": "NVDA",
+   "buy_n": 0,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 2410.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-08-12",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1045810/000131026426000008/0001310264-26-000008-index.htm"
+   ]
+  },
+  {
+   "id": "1972928:1318605",
+   "insider": "Zhu Xiaotong",
+   "co": "Tesla, Inc.",
+   "tk": "TSLA",
+   "buy_n": 0,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 20000.0,
+   "holding_value": 6975000.0,
+   "valuation_status": "priced",
+   "latest_holding_fd": "2026-04-01",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1318605/000197292826000002/0001972928-26-000002-index.htm"
+   ]
+  },
+  {
+   "id": "1197647:1045810",
+   "insider": "COXE TENCH",
+   "co": "NVIDIA CORP",
+   "tk": "NVDA",
+   "buy_n": 0,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 32000000.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-07-02",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1045810/000119764726000005/0001197647-26-000005-index.htm"
+   ]
+  },
+  {
+   "id": "1218401:1504461",
+   "insider": "GUDERIAN BRYAN K",
+   "co": "NGL Energy Partners LP",
+   "tk": "NGL",
+   "buy_n": 0,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": null,
+   "holding_value": null,
+   "valuation_status": "no_reported_post_transaction_common_shares",
+   "latest_holding_fd": "",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1504461/000121840126000003/0001218401-26-000003-index.htm"
+   ]
+  },
+  {
+   "id": "1728451:1067983",
+   "insider": "JAIN AJIT",
+   "co": "BERKSHIRE HATHAWAY INC",
+   "tk": "BRK-B",
+   "buy_n": 0,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 327.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-07-02",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/1067983/000172845126000002/0001728451-26-000002-index.htm"
+   ]
+  },
+  {
+   "id": "1824409:789019",
+   "insider": "Jolla Alice L.",
+   "co": "MICROSOFT CORP",
+   "tk": "MSFT",
+   "buy_n": 0,
+   "sell_n": 0,
+   "buy_sell_overlap": false,
+   "reported_common_shares": 28500.0,
+   "holding_value": null,
+   "valuation_status": "shares_only_no_market_price",
+   "latest_holding_fd": "2026-06-17",
+   "review": [
+    "https://www.sec.gov/Archives/edgar/data/789019/000078901926000135/0000789019-26-000135-index.htm"
+   ]
+  }
+ ],
+ "backtest_rows": [
+  {
+   "id": "0001225208-26-003385:ICFI",
+   "tk": "ICFI",
+   "fd": "2026-03-06",
+   "entry_d": null,
+   "entry_px": null,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": null,
+   "exit_roi": null,
+   "entry_rule_status": "no_price",
+   "price_src": null,
+   "review_note": "no market bars retrieved for this ticker (delisted/uncovered) \u2014 no entry inferred",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1362004/000122520826003385/0001225208-26-003385-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/ICFI/history"
+  },
+  {
+   "id": "0001140361-26-008363:ADMA",
+   "tk": "ADMA",
+   "fd": "2026-03-09",
+   "entry_d": "2026-03-10",
+   "entry_px": 15.69,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": "open",
+   "exit_roi": null,
+   "entry_rule_status": "verified",
+   "price_src": null,
+   "review_note": "119 sessions since entry (<252); one-year exit not yet observable; price history from a partial/offline cache \u2014 re-fetch on a connected run",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1368514/000114036126008363/0001140361-26-008363-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/ADMA/history"
+  },
+  {
+   "id": "0001731122-26-000395:VEEE",
+   "tk": "VEEE",
+   "fd": "2026-03-13",
+   "entry_d": null,
+   "entry_px": null,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": null,
+   "exit_roi": null,
+   "entry_rule_status": "no_price",
+   "price_src": null,
+   "review_note": "no market bars retrieved for this ticker (delisted/uncovered) \u2014 no entry inferred",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1855509/000173112226000395/0001731122-26-000395-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/VEEE/history"
+  },
+  {
+   "id": "0001672688-26-000049:ABSI",
+   "tk": "ABSI",
+   "fd": "2026-03-16",
+   "entry_d": "2026-03-17",
+   "entry_px": 2.61,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": "open",
+   "exit_roi": null,
+   "entry_rule_status": "verified",
+   "price_src": null,
+   "review_note": "114 sessions since entry (<252); one-year exit not yet observable; price history from a partial/offline cache \u2014 re-fetch on a connected run",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1672688/000167268826000049/0001672688-26-000049-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/ABSI/history"
+  },
+  {
+   "id": "0001193125-26-111290:MYO",
+   "tk": "MYO",
+   "fd": "2026-03-17",
+   "entry_d": null,
+   "entry_px": null,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": null,
+   "exit_roi": null,
+   "entry_rule_status": "no_price",
+   "price_src": null,
+   "review_note": "no market bars retrieved for this ticker (delisted/uncovered) \u2014 no entry inferred",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1369290/000119312526111290/0001193125-26-111290-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/MYO/history"
+  },
+  {
+   "id": "0001731122-26-000462:VEEE",
+   "tk": "VEEE",
+   "fd": "2026-03-19",
+   "entry_d": null,
+   "entry_px": null,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": null,
+   "exit_roi": null,
+   "entry_rule_status": "no_price",
+   "price_src": null,
+   "review_note": "no market bars retrieved for this ticker (delisted/uncovered) \u2014 no entry inferred",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1855509/000173112226000462/0001731122-26-000462-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/VEEE/history"
+  },
+  {
+   "id": "0001493152-26-023155:AGIG",
+   "tk": "AGIG",
+   "fd": "2026-05-14",
+   "entry_d": "2026-05-15",
+   "entry_px": 1.2,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": "open",
+   "exit_roi": null,
+   "entry_rule_status": "verified",
+   "price_src": null,
+   "review_note": "72 sessions since entry (<252); one-year exit not yet observable; price history from a partial/offline cache \u2014 re-fetch on a connected run",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226023155/0001493152-26-023155-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/AGIG/history"
+  },
+  {
+   "id": "0000950142-26-001403:ALKT",
+   "tk": "ALKT",
+   "fd": "2026-05-14",
+   "entry_d": "2026-05-15",
+   "entry_px": 16.9,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": "open",
+   "exit_roi": null,
+   "entry_rule_status": "verified",
+   "price_src": null,
+   "review_note": "72 sessions since entry (<252); one-year exit not yet observable; price history from a partial/offline cache \u2014 re-fetch on a connected run",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1529274/000095014226001403/0000950142-26-001403-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/ALKT/history"
+  },
+  {
+   "id": "0001493152-26-023264:AGIG",
+   "tk": "AGIG",
+   "fd": "2026-05-15",
+   "entry_d": "2026-05-18",
+   "entry_px": 1.12,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": "open",
+   "exit_roi": null,
+   "entry_rule_status": "verified",
+   "price_src": null,
+   "review_note": "71 sessions since entry (<252); one-year exit not yet observable; price history from a partial/offline cache \u2014 re-fetch on a connected run",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226023264/0001493152-26-023264-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/AGIG/history"
+  },
+  {
+   "id": "0001062993-26-002799:ACCS",
+   "tk": "ACCS",
+   "fd": "2026-05-19",
+   "entry_d": "2026-05-20",
+   "entry_px": 6.26,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": "open",
+   "exit_roi": null,
+   "entry_rule_status": "verified",
+   "price_src": null,
+   "review_note": "69 sessions since entry (<252); one-year exit not yet observable; price history from a partial/offline cache \u2014 re-fetch on a connected run",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/843006/000106299326002799/0001062993-26-002799-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/ACCS/history"
+  },
+  {
+   "id": "0001493152-26-024597:AGIG",
+   "tk": "AGIG",
+   "fd": "2026-05-20",
+   "entry_d": "2026-05-21",
+   "entry_px": 1.18,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": "open",
+   "exit_roi": null,
+   "entry_rule_status": "verified",
+   "price_src": null,
+   "review_note": "68 sessions since entry (<252); one-year exit not yet observable; price history from a partial/offline cache \u2014 re-fetch on a connected run",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226024597/0001493152-26-024597-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/AGIG/history"
+  },
+  {
+   "id": "0001493152-26-027810:DBGI",
+   "tk": "DBGI",
+   "fd": "2026-06-09",
+   "entry_d": "2026-06-10",
+   "entry_px": 43.6,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": "open",
+   "exit_roi": null,
+   "entry_rule_status": "verified",
+   "price_src": null,
+   "review_note": "55 sessions since entry (<252); one-year exit not yet observable; price history from a partial/offline cache \u2014 re-fetch on a connected run",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1668010/000149315226027810/0001493152-26-027810-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/DBGI/history"
+  },
+  {
+   "id": "0001493152-26-028685:AGIG",
+   "tk": "AGIG",
+   "fd": "2026-06-15",
+   "entry_d": "2026-06-16",
+   "entry_px": 1.15,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": "open",
+   "exit_roi": null,
+   "entry_rule_status": "verified",
+   "price_src": null,
+   "review_note": "51 sessions since entry (<252); one-year exit not yet observable; price history from a partial/offline cache \u2014 re-fetch on a connected run",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226028685/0001493152-26-028685-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/AGIG/history"
+  },
+  {
+   "id": "0001104659-26-074164:CTSO",
+   "tk": "CTSO",
+   "fd": "2026-06-15",
+   "entry_d": "2026-06-16",
+   "entry_px": 0.49,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": "open",
+   "exit_roi": null,
+   "entry_rule_status": "verified",
+   "price_src": null,
+   "review_note": "51 sessions since entry (<252); one-year exit not yet observable; price history from a partial/offline cache \u2014 re-fetch on a connected run",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1175151/000110465926074164/0001104659-26-074164-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/CTSO/history"
+  },
+  {
+   "id": "0001672688-26-000124:ABSI",
+   "tk": "ABSI",
+   "fd": "2026-07-06",
+   "entry_d": "2026-07-07",
+   "entry_px": 11.85,
+   "exit_d": null,
+   "exit_px": null,
+   "exit_status": "open",
+   "exit_roi": null,
+   "entry_rule_status": "verified",
+   "price_src": null,
+   "review_note": "38 sessions since entry (<252); one-year exit not yet observable; price history from a partial/offline cache \u2014 re-fetch on a connected run",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1672688/000167268826000124/0001672688-26-000124-index.htm",
+   "market_history": "https://finance.yahoo.com/quote/ABSI/history"
+  }
+ ],
+ "trade_sample": [
+  {
+   "fd": "2026-03-16",
+   "td": "2026-03-12",
+   "co": "Absci Corp",
+   "tk": "ABSI",
+   "insider": "Busch Andreas",
+   "rel": "Officer",
+   "code": "P",
+   "side": "buy",
+   "sh": "100000.0",
+   "px": "2.29",
+   "val": "229000.0",
+   "af": "421446.0",
+   "acc": "0001672688-26-000049",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1672688/000167268826000049/0001672688-26-000049-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-03-09",
+   "td": "2026-03-05",
+   "co": "ADMA BIOLOGICS, INC.",
+   "tk": "ADMA",
+   "insider": "ELMS STEVE",
+   "rel": "Director",
+   "code": "P",
+   "side": "buy",
+   "sh": "7000.0",
+   "px": "15.67",
+   "val": "109690.0",
+   "af": "2038730.0",
+   "acc": "0001140361-26-008363",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1368514/000114036126008363/0001140361-26-008363-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-03-16",
+   "td": "2026-03-12",
+   "co": "Absci Corp",
+   "tk": "ABSI",
+   "insider": "Busch Andreas",
+   "rel": "Officer",
+   "code": "P",
+   "side": "buy",
+   "sh": "100000.0",
+   "px": "2.29",
+   "val": "229000.0",
+   "af": "421446.0",
+   "acc": "0001672688-26-000049",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1672688/000167268826000049/0001672688-26-000049-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-03-09",
+   "td": "2026-03-05",
+   "co": "ADMA BIOLOGICS, INC.",
+   "tk": "ADMA",
+   "insider": "ELMS STEVE",
+   "rel": "Director",
+   "code": "P",
+   "side": "buy",
+   "sh": "7000.0",
+   "px": "15.67",
+   "val": "109690.0",
+   "af": "2038730.0",
+   "acc": "0001140361-26-008363",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1368514/000114036126008363/0001140361-26-008363-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-03-09",
+   "td": "2026-03-06",
+   "co": "ADMA BIOLOGICS, INC.",
+   "tk": "ADMA",
+   "insider": "ELMS STEVE",
+   "rel": "Director",
+   "code": "P",
+   "side": "buy",
+   "sh": "7000.0",
+   "px": "15.39",
+   "val": "107730.0",
+   "af": "2045730.0",
+   "acc": "0001140361-26-008363",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1368514/000114036126008363/0001140361-26-008363-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-04-01",
+   "td": "2026-03-31",
+   "co": "Tesla, Inc.",
+   "tk": "TSLA",
+   "insider": "Zhu Xiaotong",
+   "rel": "Officer",
+   "code": "M",
+   "side": "exercise",
+   "sh": "20000.0",
+   "px": "20.57",
+   "val": "411400.0",
+   "af": "0.0",
+   "acc": "0001972928-26-000002",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1318605/000197292826000002/0001972928-26-000002-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-04-01",
+   "td": "2026-03-31",
+   "co": "Tesla, Inc.",
+   "tk": "TSLA",
+   "insider": "Zhu Xiaotong",
+   "rel": "Officer",
+   "code": "M",
+   "side": "exercise",
+   "sh": "20000.0",
+   "px": "20.57",
+   "val": "411400.0",
+   "af": "20000.0",
+   "acc": "0001972928-26-000002",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1318605/000197292826000002/0001972928-26-000002-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-04-01",
+   "td": "2026-03-31",
+   "co": "Tesla, Inc.",
+   "tk": "TSLA",
+   "insider": "Zhu Xiaotong",
+   "rel": "Officer",
+   "code": "M",
+   "side": "exercise",
+   "sh": "20000.0",
+   "px": "20.57",
+   "val": "411400.0",
+   "af": "0.0",
+   "acc": "0001972928-26-000002",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1318605/000197292826000002/0001972928-26-000002-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-04-01",
+   "td": "2026-03-31",
+   "co": "Tesla, Inc.",
+   "tk": "TSLA",
+   "insider": "Zhu Xiaotong",
+   "rel": "Officer",
+   "code": "M",
+   "side": "exercise",
+   "sh": "20000.0",
+   "px": "20.57",
+   "val": "411400.0",
+   "af": "20000.0",
+   "acc": "0001972928-26-000002",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1318605/000197292826000002/0001972928-26-000002-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-05-14",
+   "td": "2026-05-12",
+   "co": "ALKAMI TECHNOLOGY, INC.",
+   "tk": "ALKT",
+   "insider": "GENERAL ATLANTIC, L.P. (+9 joint)",
+   "rel": "Director/10% Owner",
+   "code": "P",
+   "side": "buy",
+   "sh": "750000.0",
+   "px": "16.87",
+   "val": "12652500.0",
+   "af": "18195994.0",
+   "acc": "0000950142-26-001403",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1529274/000095014226001403/0000950142-26-001403-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-05-14",
+   "td": "2026-05-14",
+   "co": "ALKAMI TECHNOLOGY, INC.",
+   "tk": "ALKT",
+   "insider": "GENERAL ATLANTIC, L.P. (+9 joint)",
+   "rel": "Director/10% Owner",
+   "code": "P",
+   "side": "buy",
+   "sh": "675000.0",
+   "px": "16.49",
+   "val": "11130750.0",
+   "af": "19420994.0",
+   "acc": "0000950142-26-001403",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1529274/000095014226001403/0000950142-26-001403-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-05-14",
+   "td": "2026-05-12",
+   "co": "ALKAMI TECHNOLOGY, INC.",
+   "tk": "ALKT",
+   "insider": "GENERAL ATLANTIC, L.P. (+9 joint)",
+   "rel": "Director/10% Owner",
+   "code": "P",
+   "side": "buy",
+   "sh": "750000.0",
+   "px": "16.87",
+   "val": "12652500.0",
+   "af": "18195994.0",
+   "acc": "0000950142-26-001403",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1529274/000095014226001403/0000950142-26-001403-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-05-14",
+   "td": "2026-05-14",
+   "co": "ALKAMI TECHNOLOGY, INC.",
+   "tk": "ALKT",
+   "insider": "GENERAL ATLANTIC, L.P. (+9 joint)",
+   "rel": "Director/10% Owner",
+   "code": "P",
+   "side": "buy",
+   "sh": "675000.0",
+   "px": "16.49",
+   "val": "11130750.0",
+   "af": "19420994.0",
+   "acc": "0000950142-26-001403",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1529274/000095014226001403/0000950142-26-001403-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-05-14",
+   "td": "2026-05-13",
+   "co": "ALKAMI TECHNOLOGY, INC.",
+   "tk": "ALKT",
+   "insider": "GENERAL ATLANTIC, L.P. (+9 joint)",
+   "rel": "Director/10% Owner",
+   "code": "P",
+   "side": "buy",
+   "sh": "550000.0",
+   "px": "16.63",
+   "val": "9146500.0",
+   "af": "18745994.0",
+   "acc": "0000950142-26-001403",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1529274/000095014226001403/0000950142-26-001403-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-06-15",
+   "td": "2026-06-12",
+   "co": "Cytosorbents Corp",
+   "tk": "CTSO",
+   "insider": "Chan Phillip P.",
+   "rel": "Director/Officer",
+   "code": "P",
+   "side": "buy",
+   "sh": "251136.0",
+   "px": "0.4",
+   "val": "100454.4",
+   "af": "1734099.0",
+   "acc": "0001104659-26-074164",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1175151/000110465926074164/0001104659-26-074164-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-06-09",
+   "td": "2026-06-02",
+   "co": "Digital Brands Group, Inc.",
+   "tk": "DBGI",
+   "insider": "DAVIS JOHN HILBURN IV",
+   "rel": "Director/Officer",
+   "code": "P",
+   "side": "buy",
+   "sh": "70127.0287",
+   "px": "0.7001",
+   "val": "49095.93",
+   "af": "70128.0287",
+   "acc": "0001493152-26-027810",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1668010/000149315226027810/0001493152-26-027810-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-06-15",
+   "td": "2026-06-12",
+   "co": "Cytosorbents Corp",
+   "tk": "CTSO",
+   "insider": "Chan Phillip P.",
+   "rel": "Director/Officer",
+   "code": "P",
+   "side": "buy",
+   "sh": "251136.0",
+   "px": "0.4",
+   "val": "100454.4",
+   "af": "1734099.0",
+   "acc": "0001104659-26-074164",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1175151/000110465926074164/0001104659-26-074164-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-06-09",
+   "td": "2026-06-02",
+   "co": "Digital Brands Group, Inc.",
+   "tk": "DBGI",
+   "insider": "DAVIS JOHN HILBURN IV",
+   "rel": "Director/Officer",
+   "code": "P",
+   "side": "buy",
+   "sh": "70127.0287",
+   "px": "0.7001",
+   "val": "49095.93",
+   "af": "70128.0287",
+   "acc": "0001493152-26-027810",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1668010/000149315226027810/0001493152-26-027810-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-06-15",
+   "td": "2026-06-12",
+   "co": "ABUNDIA GLOBAL IMPACT GROUP, INC.",
+   "tk": "AGIG",
+   "insider": "Gillespie Edward Oliver",
+   "rel": "Director/Officer",
+   "code": "P",
+   "side": "buy",
+   "sh": "11000.0",
+   "px": "1.18",
+   "val": "12980.0",
+   "af": "202248.0",
+   "acc": "0001493152-26-028685",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1156041/000149315226028685/0001493152-26-028685-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-07-06",
+   "td": "2026-06-30",
+   "co": "Absci Corp",
+   "tk": "ABSI",
+   "insider": "Szela Mary T",
+   "rel": "Director",
+   "code": "P",
+   "side": "buy",
+   "sh": "12900.0",
+   "px": "11.54",
+   "val": "148866.0",
+   "af": "21300.0",
+   "acc": "0001672688-26-000124",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1672688/000167268826000124/0001672688-26-000124-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-07-02",
+   "td": "2026-07-01",
+   "co": "NVIDIA CORP",
+   "tk": "NVDA",
+   "insider": "COXE TENCH",
+   "rel": "Director",
+   "code": "G",
+   "side": "gift",
+   "sh": "500000.0",
+   "px": "0.0",
+   "val": "0.0",
+   "af": "32000000.0",
+   "acc": "0001197647-26-000005",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1045810/000119764726000005/0001197647-26-000005-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-07-06",
+   "td": "2026-06-30",
+   "co": "Absci Corp",
+   "tk": "ABSI",
+   "insider": "Szela Mary T",
+   "rel": "Director",
+   "code": "P",
+   "side": "buy",
+   "sh": "12900.0",
+   "px": "11.54",
+   "val": "148866.0",
+   "af": "21300.0",
+   "acc": "0001672688-26-000124",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1672688/000167268826000124/0001672688-26-000124-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-07-02",
+   "td": "2026-07-01",
+   "co": "NVIDIA CORP",
+   "tk": "NVDA",
+   "insider": "COXE TENCH",
+   "rel": "Director",
+   "code": "G",
+   "side": "gift",
+   "sh": "500000.0",
+   "px": "0.0",
+   "val": "0.0",
+   "af": "32000000.0",
+   "acc": "0001197647-26-000005",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1045810/000119764726000005/0001197647-26-000005-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-07-02",
+   "td": "2026-07-01",
+   "co": "BERKSHIRE HATHAWAY INC",
+   "tk": "BRK-B",
+   "insider": "JAIN AJIT",
+   "rel": "Director/Officer",
+   "code": "G",
+   "side": "gift",
+   "sh": "3.0",
+   "px": "0.0",
+   "val": "0.0",
+   "af": "327.0",
+   "acc": "0001728451-26-000002",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1067983/000172845126000002/0001728451-26-000002-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-08-20",
+   "td": "2026-08-18",
+   "co": "Meta Platforms, Inc.",
+   "tk": "META",
+   "insider": "Bosworth Andrew",
+   "rel": "Officer",
+   "code": "S",
+   "side": "sell",
+   "sh": "7848.0",
+   "px": "558.0",
+   "val": "4379184.0",
+   "af": "828.0",
+   "acc": "0000950103-26-012726",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1326801/000095010326012726/0000950103-26-012726-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-08-24",
+   "td": "2026-08-20",
+   "co": "Palantir Technologies Inc.",
+   "tk": "PLTR",
+   "insider": "Karp Alexander C.",
+   "rel": "Director/Officer",
+   "code": "S",
+   "side": "sell",
+   "sh": "19493.0",
+   "px": "173.7864",
+   "val": "3387618.3",
+   "af": "371477.0",
+   "acc": "0001823951-26-000009",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1321655/000182395126000009/0001823951-26-000009-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-08-20",
+   "td": "2026-08-18",
+   "co": "Meta Platforms, Inc.",
+   "tk": "META",
+   "insider": "Bosworth Andrew",
+   "rel": "Officer",
+   "code": "S",
+   "side": "sell",
+   "sh": "7848.0",
+   "px": "558.0",
+   "val": "4379184.0",
+   "af": "828.0",
+   "acc": "0000950103-26-012726",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1326801/000095010326012726/0000950103-26-012726-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-08-24",
+   "td": "2026-08-20",
+   "co": "Palantir Technologies Inc.",
+   "tk": "PLTR",
+   "insider": "Karp Alexander C.",
+   "rel": "Director/Officer",
+   "code": "S",
+   "side": "sell",
+   "sh": "19493.0",
+   "px": "173.7864",
+   "val": "3387618.3",
+   "af": "371477.0",
+   "acc": "0001823951-26-000009",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1321655/000182395126000009/0001823951-26-000009-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  },
+  {
+   "fd": "2026-08-24",
+   "td": "2026-08-20",
+   "co": "Palantir Technologies Inc.",
+   "tk": "PLTR",
+   "insider": "Karp Alexander C.",
+   "rel": "Director/Officer",
+   "code": "S",
+   "side": "sell",
+   "sh": "11378.0",
+   "px": "172.6542",
+   "val": "1964459.49",
+   "af": "390970.0",
+   "acc": "0001823951-26-000009",
+   "sec_filing": "https://www.sec.gov/Archives/edgar/data/1321655/000182395126000009/0001823951-26-000009-index.htm",
+   "verify": "shares\u00d7price=val; code/side per SEC Table I; held-after=af"
+  }
+ ],
  "method": {
   "trades": "Every row parsed from official SEC Form 3/4/5 XML fields; SEC filing URL emitted per row for manual review.",
   "entry_rule": "Entry = open of the first regular session strictly after the SEC filing date; gap must be 1-10 calendar days on a weekday.",
-  "arithmetic": "shares=10000/entry_px; mtm=shares*last_px; pnl=mtm-10000; roi=mtm/10000-1 recomputed independently here.",
-  "prices": "Yahoo Finance daily OHLC; independently re-fetchable via the emitted chart-API URLs."
+  "exit_rule": "Backtest exit = verified close of the +252 session (delisted names: last observed close, flagged); exit only from sessions that have actually printed.",
+  "arithmetic": "shares=10000/entry_px; mtm=shares*last_px; pnl=mtm-10000; roi=mtm/10000-1; exit_pnl=shares*exit_px-10000; all recomputed independently here.",
+  "prices": "Yahoo Finance / Stooq / Nasdaq daily OHLC; independently re-fetchable via the emitted chart-API URLs. Split-straddling ROIs are withheld (roi_review) until the share basis is confirmed."
  }
 }

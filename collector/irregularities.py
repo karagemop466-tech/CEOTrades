@@ -386,6 +386,109 @@ def scan_paper_price_anomalies(site_data: str) -> list[dict]:
     return out
 
 
+def scan_paper_split_straddle(site_data: str) -> list[dict]:
+    """Flag positions whose mark-to-market return is implausibly large for a
+    short holding period — the signature of a corporate action (reverse/
+    forward split, M&A cash-out) straddled by an internally inconsistent price
+    series, OR of an actual takeover event. Either way the headline ROI must
+    not be trusted until the corporate action is confirmed line by line.
+
+    A real open-market follower cannot make >200% in fewer than ~60 sessions
+    without a corporate action; such a return with a tiny entry price is the
+    classic reverse-split adjustment artifact (as-filed vs split-adjusted)."""
+    path = os.path.join(site_data, "paper", "positions.json")
+    if not os.path.isfile(path):
+        return []
+    try:
+        rows = json.load(open(path, encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    out = []
+    for p in rows:
+        if p.get("status") != "open":
+            continue
+        roi = p.get("roi")
+        hold = p.get("hold")
+        # The engine itself withholds a straddled ROI (roi_review) — that is a
+        # direct, authoritative signal that a corporate action was detected.
+        if p.get("roi_review"):
+            roi = p.get("roi_reported") if p.get("roi_reported") is not None else roi
+        if roi is None:
+            continue
+        hold_sessions = hold if isinstance(hold, (int, float)) else 9999
+        # >200% in <=90 sessions, any >500% move, or an engine roi_review flag:
+        # all require a corporate-action check.
+        extreme = bool(p.get("roi_review")) or (roi > 2.0 and hold_sessions <= 90) or roi > 5.0
+        if not extreme:
+            continue
+        fake_row = {
+            "acc": p.get("acc") or "", "icik": p.get("icik") or "",
+            "fd": p.get("fd") or "", "td": p.get("td") or "",
+            "tk": p.get("tk") or "", "co": p.get("co") or "",
+            "in": p.get("insider") or "", "code": "P",
+            "sh": p.get("insider_sh"), "px": p.get("insider_px"),
+            "val": p.get("insider_val"), "sec": p.get("sec") or "", "der": 0,
+        }
+        epx, lpx = p.get("entry_px"), p.get("last_px")
+        out.append(base_item(
+            "Implausible mark-to-market ROI — corporate action / split-straddle review",
+            "High",
+            [fake_row],
+            (f"{p.get('tk')} shows a {float(roi)*100:,.0f}% mark-to-market ROI over "
+             f"~{hold_sessions} sessions (entry {epx} on {p.get('entry_d')} -> "
+             f"{lpx} on {p.get('last_d')}, price source {p.get('price_src')}). "
+             f"A move this large over this few sessions implies a corporate action "
+             f"(reverse/forward split, merger cash-out, or a series adjustment mismatch)."),
+            ("Verify the split/takeover history against SEC filings (8-K/DEF merger) "
+             "and an adjusted historical price source. Reverse splits leave a follower's "
+             "DOLLAR value roughly unchanged, so a multi-bagger ROI from a sub-$5 entry is "
+             "usually an adjustment artifact and must NOT be reported as a gain. The as-filed "
+             "Form 4 price and the market bars may be on different share bases until confirmed."),
+            "Open paper position with roi>2.0 within <=60 held sessions, or roi>5.0 at any horizon.",
+        ))
+    return out
+
+
+def scan_paper_na_price_consistency(site_data: str) -> list[dict]:
+    """Flag positions whose price series lacks enough post-entry history to
+    trust the mark (e.g. the cached bars stop short or are a stale tail), which
+    can silently mix pre- and post-corporate-action prices."""
+    path = os.path.join(site_data, "paper", "positions.json")
+    if not os.path.isfile(path):
+        return []
+    try:
+        rows = json.load(open(path, encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    out = []
+    for p in rows:
+        if p.get("status") != "open":
+            continue
+        # A verified entry but NO r1 (next-session close) means the bar series
+        # ends at/around the entry — the last_px mark may be the entry bar
+        # itself or stale, so ROI is not a real forward mark.
+        if p.get("entry_px") and p.get("r1") is None and p.get("hold") in (0, None):
+            fake_row = {
+                "acc": p.get("acc") or "", "icik": p.get("icik") or "",
+                "fd": p.get("fd") or "", "tk": p.get("tk") or "",
+                "co": p.get("co") or "", "in": p.get("insider") or "",
+                "code": "P", "px": p.get("insider_px"), "val": p.get("insider_val"),
+                "sh": p.get("insider_sh"), "der": 0,
+            }
+            out.append(base_item(
+                "Paper mark not independently supported (no post-entry session bar)",
+                "Medium",
+                [fake_row],
+                (f"{p.get('tk')} has a verified entry {p.get('entry_px')} on "
+                 f"{p.get('entry_d')} but no next-session close in the cached series; "
+                 f"the mark/ROI rests on a bar that may equal the entry bar."),
+                "Refresh the price history before trusting ROI; a series that stops at "
+                "entry cannot produce a real mark-to-market return.",
+                "Verified entry but r1 is blank and hold==0.",
+            ))
+    return out
+
+
 def dedupe(items: list[dict]) -> list[dict]:
     seen = set()
     out = []
@@ -417,7 +520,10 @@ def scan(data_dir: str = store.DATA, target_year: int | None = None,
     items.extend(scan_buyer_seller_overlap(rows))
     items.extend(scan_exercise_then_sale(rows))
     items.extend(scan_large_noncash(rows))
-    items.extend(scan_paper_price_anomalies(os.path.join(ROOT, "data")))
+    site_data = os.path.join(ROOT, "data")
+    items.extend(scan_paper_price_anomalies(site_data))
+    items.extend(scan_paper_split_straddle(site_data))
+    items.extend(scan_paper_na_price_consistency(site_data))
 
     items = dedupe(items)
     items.sort(key=lambda x: (

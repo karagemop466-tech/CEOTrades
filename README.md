@@ -40,6 +40,49 @@ Two properties are enforced in code and covered by tests:
   counted, not silently dropped. `open + awaiting_entry + no_price` always
   equals the total signal count.
 
+### Corporate-action (split) guard
+
+Insider prices are **as-filed** while market bars are **split-adjusted**, and a
+reverse split or cash takeover inside a holding window puts the entry and the
+mark on different share bases. The simulator detects this two ways — an
+unadjusted ≥3× close-to-close jump inside the holding window, or an implausible
+return (e.g. >200% within ~90 sessions or >500% at any horizon). When it fires,
+the observed prices and dates are kept but the headline ROI/P&L is **withheld**
+(`roi_review: true`, raw value retained in `roi_reported`) and a **High**
+irregularity flag is raised. Example caught and verified: Digital Brands Group
+(DBGI) did a 1-for-40 reverse split on 2026-07-24; an unadjusted series showed a
+specious +517% return that a follower never earned (the share count collapsed by
+40×). The flag is a request to confirm the share basis, never a silent guess.
+
+---
+
+## The historical backtest (verified entries AND exits)
+
+The forward book leaves positions open; the **backtest** closes them so every
+tracked insider buy gets a real, observed entry price/date **and** a real
+observed exit price/date. It runs over the whole collected archive:
+
+| Rule | Value |
+|---|---|
+| **Signal** | Same code-P common-equity aggregation — one $10,000 position per SEC accession+ticker |
+| **Entry** | Open of the first trading day strictly after the filing date (no lookahead) |
+| **Exit** | Regular-session **close 252 sessions later** (~one trading year) |
+| **Delisted/M&A** | Mature names whose bar series ends early exit at the **last observed close** and are flagged `exit_last_observed` for corporate-action review |
+| **Not yet mature** | Positions younger than 252 sessions stay `open`, exit left blank (never estimated) |
+| **Prices** | Yahoo full-history (`range=max`) bars, Stooq then Nasdaq fallback, cached per ticker |
+
+Every signal is accounted for in `data/backtest/coverage.json` (P-rows →
+derivative / no-ticker / no-price / not-common → signals → verified entry →
+exited / open / no-price), so **a tracked buy is never silently missing a
+trade**. Outputs land in `data/backtest/` (`positions.json/.csv`, `summary.json`,
+`winners.json`, `losers.json`, `coverage.json`) and on the [Backtest
+page](https://karagemop466-tech.github.io/CEOTrades/backtest.html). The
+`.github/workflows/backfill.yml` workflow downloads the multi-year SEC archives
+and prices them (the nightly job keeps the current year fresh within its 2-hour
+budget; the weekly job deepens history). `collector/test_backtest.py` proves the
+entry/exit math, the no-lookahead rule, the delisting exit, and the split guard
+offline.
+
 The **gap** column shows what following costs: our entry price versus the
 insider's average price. A positive gap means the public follower paid more.
 Every paper row also carries an entry-rule verification status, market-data
@@ -138,6 +181,9 @@ collector/
   collect.py         EDGAR daily index/XML    -> trades-YYYY-MM.json.gz
   collect_ytd.py     current-year orchestrator (bulk + daily, no manual input)
   store.py           streaming reader over both formats, de-duplicating
+  paper_trade.py     forward $10k simulation (open next open after filing)
+  backtest.py        historical round-trip: verified entry + 252-session exit
+                     for EVERY tracked buy, with per-signal coverage accounting
   audit.py           row-level integrity/completeness audit -> data/audit.json
   irregularities.py  deterministic review flags -> data/irregularities.json
   build_data.py      aggregation + $10k paper simulation + insider-flow/holding analysis -> data/*.json
@@ -180,8 +226,18 @@ Offline tests and generated audits run before publication:
 python3 collector/selftest.py     # ownership XML parser + fixtures
 python3 collector/test_bulk.py    # parsing, joint filers, amendments, idempotency
 python3 collector/test_paper.py   # simulation arithmetic + no-lookahead proofs
+python3 collector/test_backtest.py # verified entry+252 exit math, delisting exit, split guard
 python3 collector/test_site.py    # every field the UI reads exists; P&L recomputed
 python3 collector/audit.py --year 2025  # completeness + row-integrity report
+python3 collector/verify_lines.py # line-by-line: paper + backtest arithmetic/no-lookahead
+```
+
+Run the backtest over the collected store (use `--offline` to reproduce from the
+committed price cache without network):
+
+```bash
+python3 collector/backtest.py --from-year 2006            # full history round trips
+python3 collector/backtest.py --from-year 2024 --offline  # reproduce from cached bars
 ```
 
 `test_paper.py` recomputes the arithmetic by hand ($10,000 at an open of

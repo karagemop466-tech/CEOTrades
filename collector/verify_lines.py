@@ -136,13 +136,37 @@ def verify_positions(vids: list[dict]):
                 sh = 10000.0 / float(p["entry_px"])
                 chk("shares=10000/entry_px", near(p.get("shares"), sh, 0.01),
                     f"shares={p.get('shares')} want {sh:.4f}")
-            if p.get("last_px") is not None and p.get("shares") is not None:
+            # When a position is flagged roi_review (a split/takeover straddle
+            # on inconsistent share bases) the headline roi/mtm/pnl are
+            # deliberately blanked; the raw computed value is retained in
+            # roi_reported so it remains auditable. Otherwise the arithmetic
+            # must recompute exactly.
+            if p.get("roi_review"):
+                chk("roi_review_blanks_headline",
+                    p.get("roi") is None and p.get("mtm") is None and p.get("pnl") is None,
+                    f"roi={p.get('roi')} mtm={p.get('mtm')}")
+                chk("roi_review_retains_raw", p.get("roi_reported") is not None,
+                    "raw return kept in roi_reported")
+            elif p.get("last_px") is not None and p.get("shares") is not None:
                 mtm = float(p["shares"]) * float(p["last_px"])
                 chk("mtm=shares*last_px", near(p.get("mtm"), mtm, 0.05),
                     f"mtm={p.get('mtm')} want {mtm:.2f}")
                 if p.get("mtm") is not None:
                     chk("pnl=mtm-stake", near(p.get("pnl"), float(p["mtm"]) - 10000.0, 0.05))
                     chk("roi=mtm/stake-1", near(p.get("roi"), float(p["mtm"]) / 10000.0 - 1, 1e-4))
+            # Verified round-trip exit: a populated exit must be a real close
+            # strictly after entry, and its ROI must equal exit/entry-1.
+            if p.get("exit_px") is not None and p.get("entry_px"):
+                xd, ed2 = ymd(p.get("exit_d")), ymd(p.get("entry_d"))
+                chk("exit_after_entry", bool(xd and ed2 and xd > ed2),
+                    f"exit_d={p.get('exit_d')} entry_d={p.get('entry_d')}")
+                want = float(p["exit_px"]) / float(p["entry_px"]) - 1.0
+                chk("exit_roi=exit_px/entry_px-1", near(p.get("exit_roi"), want, 2e-4),
+                    f"exit_roi={p.get('exit_roi')} want {want:.4f}")
+                if p.get("shares"):
+                    want_pnl = float(p["shares"]) * float(p["exit_px"]) - 10000.0
+                    chk("exit_pnl=shares*exit_px-stake", near(p.get("exit_pnl"), want_pnl, 0.05),
+                        f"exit_pnl={p.get('exit_pnl')} want {want_pnl:.2f}")
             if p.get("insider_px"):
                 ipx = float(p["insider_px"])
                 chk("insider_px=val/sh", near(ipx, (p.get("insider_val") or 0) / (p.get("insider_sh") or 1), max(0.01, ipx * 1e-4)))
@@ -208,6 +232,71 @@ def verify_activity():
     return out
 
 
+def verify_backtest():
+    """Verify the historical backtest book: every signal is accounted for, and
+    every populated entry/exit obeys the no-lookahead and arithmetic rules."""
+    path = os.path.join(SITE, "backtest", "positions.json")
+    cov_path = os.path.join(SITE, "backtest", "coverage.json")
+    if not os.path.exists(path):
+        return []
+    positions = json.load(open(path, encoding="utf-8"))
+    out = []
+    n_verified = n_exited = n_nopx = 0
+    for p in positions:
+        pid = p.get("id") or ""
+        ers = p.get("entry_rule_status")
+        if ers == "verified":
+            n_verified += 1
+            ed, fd = ymd(p.get("entry_d")), ymd(p.get("fd"))
+            ok(f"backtest[{pid}] entry_after_filing", bool(ed and fd and ed > fd),
+               f"entry_d={p.get('entry_d')} fd={p.get('fd')}")
+            if ed and fd:
+                gap = (ed - fd).days
+                ok(f"backtest[{pid}] entry_gap_1_to_10", 1 <= gap <= 10, f"gap={gap}d")
+            if p.get("entry_px"):
+                want_sh = 10000.0 / float(p["entry_px"])
+                ok(f"backtest[{pid}] shares", near(p.get("shares"), want_sh, 0.01),
+                   f"shares={p.get('shares')} want {want_sh:.4f}")
+            ok(f"backtest[{pid}] edgar_url",
+               edgar_url_ok(p.get("edgar_url"), p.get("acc"), p.get("icik")),
+               str(p.get("edgar_url")))
+        else:
+            n_nopx += 1
+            # A non-verified position must never carry an entry price.
+            ok(f"backtest[{pid}] no_price_has_no_entry", p.get("entry_px") is None,
+               f"entry_px={p.get('entry_px')} status={ers}")
+        if p.get("exit_status") in ("exited_252", "exit_last_observed"):
+            n_exited += 1
+            xd, ed2 = ymd(p.get("exit_d")), ymd(p.get("entry_d"))
+            ok(f"backtest[{pid}] exit_after_entry", bool(xd and ed2 and xd > ed2),
+               f"exit_d={p.get('exit_d')} entry_d={p.get('entry_d')}")
+            if p.get("exit_px") and p.get("entry_px"):
+                want = float(p["exit_px"]) / float(p["entry_px"]) - 1.0
+                ok(f"backtest[{pid}] exit_roi_math", near(p.get("exit_roi"), want, 2e-4),
+                   f"exit_roi={p.get('exit_roi')} want {want:.4f}")
+        out.append({"id": pid, "tk": p.get("tk"), "fd": p.get("fd"),
+                    "entry_d": p.get("entry_d"), "entry_px": p.get("entry_px"),
+                    "exit_d": p.get("exit_d"), "exit_px": p.get("exit_px"),
+                    "exit_status": p.get("exit_status"), "exit_roi": p.get("exit_roi"),
+                    "entry_rule_status": ers, "price_src": p.get("price_src"),
+                    "review_note": p.get("review_note"),
+                    "sec_filing": p.get("edgar_url"),
+                    "market_history": p.get("yahoo_history_url")})
+    # Coverage reconciliation: the coverage manifest must list every position.
+    if os.path.exists(cov_path):
+        cov = json.load(open(cov_path, encoding="utf-8"))
+        n_cov = len(cov.get("positions") or [])
+        ok("backtest.coverage_lists_every_position", n_cov == len(positions),
+           f"coverage={n_cov} positions={len(positions)}")
+        sigs = (cov.get("coverage") or {}).get("signals")
+        ok("backtest.signal_count_matches", sigs == len(positions),
+           f"coverage.signals={sigs} positions={len(positions)}")
+    ok("backtest.every_signal_is_classified",
+       n_verified + n_nopx == len(positions),
+       f"verified={n_verified} no_price={n_nopx} total={len(positions)}")
+    return out
+
+
 def sample_trade_rows(year: str | None, per_month: int = 2, stride: int = 37):
     """Deterministic trade-row sample with SEC URLs for manual review."""
     cdir = os.path.join(SITE, "csv")
@@ -252,6 +341,7 @@ def main() -> int:
 
     paper_rows = verify_positions([])
     activity_rows = verify_activity()
+    backtest_rows = verify_backtest()
     trade_sample = sample_trade_rows(str(target_year) if target_year else None)
 
     # paper summary cross-check
@@ -276,12 +366,14 @@ def main() -> int:
         "failures": FAILED,
         "paper_rows": paper_rows,
         "activity_rows": activity_rows,
+        "backtest_rows": backtest_rows,
         "trade_sample": trade_sample,
         "method": {
             "trades": "Every row parsed from official SEC Form 3/4/5 XML fields; SEC filing URL emitted per row for manual review.",
             "entry_rule": "Entry = open of the first regular session strictly after the SEC filing date; gap must be 1-10 calendar days on a weekday.",
-            "arithmetic": "shares=10000/entry_px; mtm=shares*last_px; pnl=mtm-10000; roi=mtm/10000-1 recomputed independently here.",
-            "prices": "Yahoo Finance daily OHLC; independently re-fetchable via the emitted chart-API URLs.",
+            "exit_rule": "Backtest exit = verified close of the +252 session (delisted names: last observed close, flagged); exit only from sessions that have actually printed.",
+            "arithmetic": "shares=10000/entry_px; mtm=shares*last_px; pnl=mtm-10000; roi=mtm/10000-1; exit_pnl=shares*exit_px-10000; all recomputed independently here.",
+            "prices": "Yahoo Finance / Stooq / Nasdaq daily OHLC; independently re-fetchable via the emitted chart-API URLs. Split-straddling ROIs are withheld (roi_review) until the share basis is confirmed.",
         },
     }
     os.makedirs(SITE, exist_ok=True)
@@ -317,8 +409,8 @@ def main() -> int:
         f.write("\n".join(lines))
 
     print(f"verification: {PASSED} passed, {len(FAILED)} failed "
-          f"({len(paper_rows)} paper rows, {len(activity_rows)} activity rows, "
-          f"{len(trade_sample)} sampled trade rows)")
+          f"({len(paper_rows)} paper rows, {len(backtest_rows)} backtest rows, "
+          f"{len(activity_rows)} activity rows, {len(trade_sample)} sampled trade rows)")
     for x in FAILED[:20]:
         print("  FAIL " + x)
     return 1 if FAILED else 0

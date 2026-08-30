@@ -446,6 +446,29 @@ def main() -> int:
     if vrc != 0:
         log("! line-by-line verification FAILED — refusing to report success")
         return vrc
+
+    # Historical backtest: place a verified entry+exit paper trade for EVERY
+    # tracked insider buy in the collected store. Non-blocking and
+    # budget-aware — it writes separate data/backtest/ artifacts and a failed
+    # or partial run never blocks the forward book above. Skip with
+    # CEOTRADES_SKIP_BACKTEST=1; it is offline when CEOTRADES_OFFLINE=1.
+    if os.environ.get("CEOTRADES_SKIP_BACKTEST") != "1":
+        bt_budget = float(os.environ.get("CEOTRADES_BACKTEST_MIN", "25"))
+        left_min = budget - (time.monotonic() - t_start) / 60.0
+        if left_min > bt_budget + 5:
+            log(f"\nHistorical backtest (budget ~{bt_budget:.0f} min) …")
+            bt_cmd = [sys.executable, os.path.join(HERE, "backtest.py"),
+                      "--from-year", os.environ.get("CEOTRADES_BACKTEST_FROM",
+                                                    str(_backfill_from(target) or 2006)),
+                      "--max-tickers", os.environ.get("CEOTRADES_BACKTEST_MAXTICKERS", "400")]
+            if os.environ.get("CEOTRADES_OFFLINE") == "1":
+                bt_cmd.append("--offline")
+            try:
+                subprocess.call(bt_cmd)
+            except Exception as e:  # noqa: BLE001
+                log(f"! backtest skipped: {e}")
+        else:
+            log(f"\nBacktest skipped this run (only {left_min:.0f} min budget left).")
     return 0
 
 
