@@ -20,6 +20,8 @@ Outputs (all under ./data):
   paper/summary.json      paper-book headline stats + findings
   paper/positions.json    browsable slice of the paper book
   paper/positions.csv.gz  every simulated position
+  paper/winners.json      realized positive-P&L positions (separate audit log)
+  paper/losers.json       realized negative/non-positive-P&L positions (separate audit log)
   paper/equity.json       deployed-capital / value curve
 
 Standard library only.
@@ -1672,6 +1674,30 @@ def write_paper(positions, out_dir, coverage: dict | None = None):
     a = analyze(positions)
     if coverage:
         a["signal_coverage"] = coverage
+    # Keep immutable, machine-readable outcome logs separate from the browse
+    # table. A position is only classified when a verified mark exists; an
+    # awaiting/no-price row is never guessed into either bucket. The embedded
+    # SEC and market-data links make every line manually reviewable.
+    realized = [p for p in positions if p.get("status") == "open" and p.get("pnl") is not None]
+    winners = [p for p in realized if p.get("pnl", 0) > 0]
+    losers = [p for p in realized if p.get("pnl", 0) <= 0]
+    def outcome_log(label, rows):
+        ordered_rows = sorted(rows, key=lambda p: (p.get("pnl") or 0), reverse=(label == "winners"))
+        return {
+            "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "classification": "winner if verified mark-to-market P&L > 0; loser if verified P&L <= 0",
+            "outcome": label,
+            "count": len(ordered_rows),
+            "rows": ordered_rows,
+            "unclassified_count": len(positions) - len(realized),
+            "unclassified_rule": "awaiting_entry/no_price positions remain unclassified until a verified entry and close exist",
+        }
+    jdump(outcome_log("winners", winners), os.path.join(pdir, "winners.json"))
+    jdump(outcome_log("losers", losers), os.path.join(pdir, "losers.json"))
+    a["outcomes"] = {"realized": len(realized), "winners": len(winners), "losers": len(losers),
+                      "unclassified": len(positions) - len(realized),
+                      "winner_log": "data/paper/winners.json", "loser_log": "data/paper/losers.json"}
+    # Rewrite summary after adding the auditable outcome index.
     jdump(a, os.path.join(pdir, "summary.json"))
     jdump(equity_curve(positions), os.path.join(pdir, "equity.json"))
 

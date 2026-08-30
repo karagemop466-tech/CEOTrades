@@ -206,6 +206,8 @@ def write_empty_outputs():
     w("recent.json", [])
     w("companies.json", [])
     w("insiders.json", [])
+    w("paper/winners.json", {"generated": stamp, "outcome": "winners", "count": 0, "rows": [], "unclassified_count": 0})
+    w("paper/losers.json", {"generated": stamp, "outcome": "losers", "count": 0, "rows": [], "unclassified_count": 0})
     w("paper/summary.json", {
         "stake": build_data.STAKE,
         "counts": {"signals": 0, "open": 0, "awaiting_entry": 0, "no_price": 0},
@@ -218,6 +220,8 @@ def write_empty_outputs():
         "horizons": {h: build_data.stats([]) for h in
                      ("r1", "r5", "r21", "r63", "r252")},
         "by_role": [], "by_size": [], "by_year": [], "best": [], "worst": [],
+        "outcomes": {"realized": 0, "winners": 0, "losers": 0, "unclassified": 0,
+                     "winner_log": "data/paper/winners.json", "loser_log": "data/paper/losers.json"},
         "rule": {"entry": "regular-session open of the first trading day strictly "
                           "after the SEC filing date",
                  "exit": "none — positions stay open for forward testing",

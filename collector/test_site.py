@@ -130,8 +130,12 @@ def main() -> int:
     print("5. paper/summary.json contract")
     p = load("data/paper/summary.json")
     for k in ("stake", "counts", "capital", "roi", "gap", "horizons",
-              "by_role", "by_size", "by_year", "best", "worst", "rule", "findings"):
+              "by_role", "by_size", "by_year", "best", "worst", "rule", "findings", "outcomes"):
         check(f"paper.{k}", k in p)
+    for k in ("winner_log", "loser_log", "realized", "winners", "losers", "unclassified"):
+        check(f"paper.outcomes.{k}", k in p.get("outcomes", {}))
+    for fn in ("winners.json", "losers.json"):
+        check(f"paper/{fn} exists", os.path.exists(os.path.join(ROOT, "data", "paper", fn)))
     for k in ("signals", "open", "awaiting_entry", "no_price"):
         check(f"paper.counts.{k}", k in p["counts"])
     for k in ("deployed", "value", "pnl", "roi"):
