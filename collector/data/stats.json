@@ -395,8 +395,74 @@
     }
    },
    "at": "2026-09-04T09:55:15Z"
+  },
+  {
+   "window": [
+    "2026-09-02",
+    "2026-09-04"
+   ],
+   "new_filings_trades": 0,
+   "dataset_size_after": 0,
+   "requests": 44,
+   "errors": [
+    "HTTP 403 for https://data.sec.gov/Archives/edgar/daily-index/2026/QTR3/master.20260904.idx",
+    "HTTP 403 for https://efts.sec.gov/LATEST/search-index?dateRange=custom&startdt=2026-09-04&enddt=2026-09-04&forms=4%2C4%2FA%2C5%2C5%2FA&from=0&size=100",
+    "HTTP 403 for https://data.sec.gov/Archives/edgar/daily-index/2026/QTR3/master.20260903.idx",
+    "HTTP 403 for https://efts.sec.gov/LATEST/search-index?dateRange=custom&startdt=2026-09-03&enddt=2026-09-03&forms=4%2C4%2FA%2C5%2C5%2FA&from=0&size=100"
+   ],
+   "error_count": 4,
+   "days": {
+    "2026-09-04": {
+     "note": "SOURCE UNAVAILABLE — retry required; EFTS search unavailable",
+     "filings": 0,
+     "trades": 0,
+     "index": false,
+     "retry": true
+    },
+    "2026-09-03": {
+     "note": "SOURCE UNAVAILABLE — retry required; EFTS search unavailable",
+     "filings": 0,
+     "trades": 0,
+     "index": false,
+     "retry": true
+    }
+   },
+   "at": "2026-09-05T08:26:01Z"
+  },
+  {
+   "window": [
+    "2026-01-01",
+    "2026-09-04"
+   ],
+   "new_filings_trades": 0,
+   "dataset_size_after": 0,
+   "requests": 44,
+   "errors": [
+    "HTTP 403 for https://data.sec.gov/Archives/edgar/daily-index/2026/QTR3/master.20260904.idx",
+    "HTTP 403 for https://efts.sec.gov/LATEST/search-index?dateRange=custom&startdt=2026-09-04&enddt=2026-09-04&forms=4%2C4%2FA%2C5%2C5%2FA&from=0&size=100",
+    "HTTP 403 for https://data.sec.gov/Archives/edgar/daily-index/2026/QTR3/master.20260903.idx",
+    "HTTP 403 for https://efts.sec.gov/LATEST/search-index?dateRange=custom&startdt=2026-09-03&enddt=2026-09-03&forms=4%2C4%2FA%2C5%2C5%2FA&from=0&size=100"
+   ],
+   "error_count": 4,
+   "days": {
+    "2026-09-04": {
+     "note": "SOURCE UNAVAILABLE — retry required; EFTS search unavailable",
+     "filings": 0,
+     "trades": 0,
+     "index": false,
+     "retry": true
+    },
+    "2026-09-03": {
+     "note": "SOURCE UNAVAILABLE — retry required; EFTS search unavailable",
+     "filings": 0,
+     "trades": 0,
+     "index": false,
+     "retry": true
+    }
+   },
+   "at": "2026-09-05T09:28:45Z"
   }
  ],
- "last_updated": "2026-09-04T09:55:15Z",
+ "last_updated": "2026-09-05T09:28:45Z",
  "days_collected": {}
 }
