@@ -1,11 +1,11 @@
-Window: 2026-01-01 .. 2026-09-10
+Window: 2026-01-01 .. 2026-09-11
+== 2026-09-11
+  ! giving up: HTTP 403 for https://data.sec.gov/Archives/edgar/daily-index/2026/QTR3/master.20260911.idx
+  ! giving up: HTTP 403 for https://efts.sec.gov/LATEST/search-index?dateRange=custom&startdt=2026-09-11&enddt=2026-09-11&forms=4%2C4%2FA%2C5%2C5%2FA&from=0&size=100
+   enumeration: SOURCE UNAVAILABLE — retry required; EFTS search unavailable
 == 2026-09-10
   ! giving up: HTTP 403 for https://data.sec.gov/Archives/edgar/daily-index/2026/QTR3/master.20260910.idx
   ! giving up: HTTP 403 for https://efts.sec.gov/LATEST/search-index?dateRange=custom&startdt=2026-09-10&enddt=2026-09-10&forms=4%2C4%2FA%2C5%2C5%2FA&from=0&size=100
-   enumeration: SOURCE UNAVAILABLE — retry required; EFTS search unavailable
-== 2026-09-09
-  ! giving up: HTTP 403 for https://data.sec.gov/Archives/edgar/daily-index/2026/QTR3/master.20260909.idx
-  ! giving up: HTTP 403 for https://efts.sec.gov/LATEST/search-index?dateRange=custom&startdt=2026-09-09&enddt=2026-09-09&forms=4%2C4%2FA%2C5%2C5%2FA&from=0&size=100
    enumeration: SOURCE UNAVAILABLE — retry required; EFTS search unavailable
 SEC sources unavailable for 2 consecutive days; stopping early without marking either day complete.
 Dataset: 0 trades -> /home/runner/work/CEOTrades/CEOTrades/collector/data/trades-YYYY-MM.json.gz
