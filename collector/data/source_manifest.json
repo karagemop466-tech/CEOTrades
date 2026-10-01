@@ -1,10 +1,10 @@
 {
  "daily": {
-  "command": "/opt/hostedtoolcache/Python/3.12.14/x64/bin/python3 /home/runner/work/CEOTrades/CEOTrades/collector/collect.py --start 2026-01-01 --end 2026-09-29 --rate 8.0 --budget-min 34.0 --no-backfill --data-dir /home/runner/work/CEOTrades/CEOTrades/collector/data",
+  "command": "/opt/hostedtoolcache/Python/3.12.14/x64/bin/python3 /home/runner/work/CEOTrades/CEOTrades/collector/collect.py --start 2026-01-01 --end 2026-09-30 --rate 8.0 --budget-min 34.0 --no-backfill --data-dir /home/runner/work/CEOTrades/CEOTrades/collector/data",
   "returncode": 0,
   "status": "ok"
  },
- "generated": "2026-09-30T10:37:44Z",
+ "generated": "2026-10-01T11:02:41Z",
  "official_sources": [
   "SEC Insider Transactions Data Sets quarterly ZIP archives",
   "SEC EDGAR daily master index and ownership XML submissions"
@@ -17,13 +17,17 @@
   {
    "label": "2026q2",
    "status": "blocked_retry"
+  },
+  {
+   "label": "2026q3",
+   "status": "not_published"
   }
  ],
  "removed_before_collect": [],
  "replace_year": false,
  "target_window": [
   "2026-01-01",
-  "2026-09-29"
+  "2026-09-30"
  ],
  "target_year": 2026
 }
