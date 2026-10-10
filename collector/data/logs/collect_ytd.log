@@ -10,5 +10,5 @@
    ! giving up on https://www.sec.gov/files/structureddata/data/insider-transactions-data-sets/2026q3_form345.zip (HTTP 403) — transient failure, will retry later
    ! giving up on https://www.sec.gov/files/datastandardsinnovation/data/insider-transactions-data-sets/2026q3_form345.zip (HTTP 403) — transient failure, will retry later
    bulk archive not fetched (not_published); daily EDGAR path will cover it
-== daily EDGAR collection 2026-01-01 .. 2026-10-08
+== daily EDGAR collection 2026-01-01 .. 2026-10-09
 Wrote source manifest: collector/data/source_manifest.json
